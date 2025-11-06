@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
   <head>
@@ -253,6 +254,12 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3s3-1.34 3-3-1.34-3-3-3z"/></svg>
           <span>Share</span>
         </button>
+        <!-- NEW HFM Drop Button -->
+        <button class="slider-icon-btn" id="hfmDropBtn" title="HFM Messenger Drop">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            <span>Drop</span>
+        </button>
+
         <hr class="slider-divider">
         <button class="slider-icon-btn" id="hideFileBtn" title="Hide Files">
 		  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
@@ -412,12 +419,27 @@
 	  </div>
     </div>
 
+    <!-- NEW HFM DROP MODAL -->
+    <div id="dropModal" class="modal hidden">
+        <div class="box">
+            <h3>HFM Messenger Drop</h3>
+            <p class="muted">A private, peer-to-peer file transfer system. Your identity is temporary.</p>
+            <div class="theme-buttons" style="grid-template-columns: 1fr;"> <!-- override to single column -->
+                <button class="btn" id="sendDropBtn">Send File via Drop</button>
+                <button class="btn" id="receiveDropBtn">Receive File via Drop</button>
+                <button class="btn ghost" id="regenerateDropIdBtn">Regenerate My HFM ID</button>
+                <button class="btn ghost" id="closeDropModalBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 
     // --- Elements ---
     const openFolderBtn = document.getElementById('openFolderBtn');
     const shareHubBtn = document.getElementById('shareHubBtn');
+    const hfmDropBtn = document.getElementById('hfmDropBtn'); // New
     const panel = document.querySelector('.panel');
     const helpBtn = document.getElementById('helpBtn');
     const helpView = document.getElementById('helpView');
@@ -432,12 +454,14 @@ document.addEventListener("DOMContentLoaded", function() {
     const hideFileBtn = document.getElementById('hideFileBtn');
     const themeBtn = document.getElementById('themeBtn');
     const themeModal = document.getElementById('themeModal');
-    const geminiBtn = document.getElementById('geminiBtn'); // NEW
+    const dropModal = document.getElementById('dropModal'); // New
+    const geminiBtn = document.getElementById('geminiBtn');
     
     // --- INITIALIZATION ---
     function initialize() {
         openFolderBtn.onclick = function() { callAndroid('openSearch'); };
         shareHubBtn.onclick = function() { callAndroid('openShareHub'); };
+        hfmDropBtn.onclick = openDropModal; // New
         openNativeSearchBtn.onclick = function() { callAndroid('openSearch'); };
         contactBtn.onclick = function() { callAndroid('openContactForm'); };
         cleanCacheBtn.onclick = function() { callAndroid('clearCache'); };
@@ -446,7 +470,7 @@ document.addEventListener("DOMContentLoaded", function() {
         readerBtn.onclick = function() { callAndroid('openReader'); };
         storageMapBtn.onclick = function() { callAndroid('openStorageMap'); };
         hideFileBtn.onclick = function() { callAndroid('onHideIconTapped'); };
-        geminiBtn.onclick = function() { callAndroid('openApiKeyDialog'); }; // NEW
+        geminiBtn.onclick = function() { callAndroid('openApiKeyDialog'); };
         
         document.getElementById('tab-editor').onclick = function() { alert('Editor functionality placeholder.'); };
         helpBtn.onclick = function() { panel.classList.add('hidden'); helpView.classList.remove('hidden'); closeSliderMenu(); };
@@ -460,6 +484,12 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('setThemeAmoledBtn').onclick = function() { applyTheme('amoled'); };
         document.getElementById('setThemeNordicBtn').onclick = function() { applyTheme('nordic'); };
         document.getElementById('setThemeSolarizedBtn').onclick = function() { applyTheme('solarized'); };
+
+        // New Drop Modal listeners
+        document.getElementById('closeDropModalBtn').onclick = closeDropModal;
+        document.getElementById('sendDropBtn').onclick = function() { callAndroid('sendViaDrop'); closeDropModal(); };
+        document.getElementById('receiveDropBtn').onclick = function() { callAndroid('receiveViaDrop'); closeDropModal(); };
+        document.getElementById('regenerateDropIdBtn').onclick = function() { callAndroid('regenerateHFMId'); closeDropModal(); };
 
         setupSwipeToRefresh();
     }
@@ -496,7 +526,11 @@ document.addEventListener("DOMContentLoaded", function() {
         overlay.classList.add("active");
     });
     addSwipeListener(sliderMenu, function() { closeSliderMenu(); });
-    overlay.addEventListener("click", function() { closeSliderMenu(); });
+    overlay.addEventListener("click", function() { 
+        closeSliderMenu(); 
+        closeThemeModal();
+        closeDropModal();
+    });
 
     function setupSwipeToRefresh() {
         let touchstartY = 0;
@@ -529,6 +563,15 @@ document.addEventListener("DOMContentLoaded", function() {
     
     function closeThemeModal() {
         themeModal.classList.add('hidden');
+    }
+
+    function openDropModal() {
+        dropModal.classList.remove('hidden');
+        closeSliderMenu();
+    }
+    
+    function closeDropModal() {
+        dropModal.classList.add('hidden');
     }
     
     function applyTheme(themeName) {
