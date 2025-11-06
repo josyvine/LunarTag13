@@ -7,7 +7,9 @@ android {
 
     defaultConfig {
         applicationId "com.hfm.app"
-        minSdkVersion 21
+        // --- THIS IS THE FIX ---
+        // Increase the minimum SDK version to 23 to match the Firebase library requirement.
+        minSdkVersion 23
         targetSdkVersion 34
         versionCode 1
         versionName "1.0"
@@ -31,9 +33,6 @@ android {
         exclude 'META-INF/NOTICE'
     }
 
-    // --- THIS IS THE FIX for the PDFBox crash ---
-    // This tells the build system not to compress .txt files, which is necessary
-    // for the pdfbox library to find its internal 'glyphlist.txt' resource.
     aaptOptions {
         noCompress "txt"
     }
