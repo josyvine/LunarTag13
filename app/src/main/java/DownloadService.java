@@ -16,6 +16,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
@@ -40,6 +41,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
@@ -49,6 +51,10 @@ public class DownloadService extends Service {
     private static final String TAG = "DownloadService";
     private static final String NOTIFICATION_CHANNEL_ID = "DownloadServiceChannel";
     private static final int NOTIFICATION_ID = 1002;
+
+    // --- NEW: Actions and Extras for broadcasting the error report ---
+    public static final String ACTION_DOWNLOAD_ERROR = "com.hfm.app.action.DOWNLOAD_ERROR";
+    public static final String EXTRA_ERROR_MESSAGE = "com.hfm.app.extra.ERROR_MESSAGE";
 
     private FirebaseFirestore db;
     private ListenerRegistration requestListener;
@@ -112,7 +118,11 @@ public class DownloadService extends Service {
         }).addOnFailureListener(new OnFailureListener() {
             @Override
             public void onFailure(@NonNull Exception e) {
-                stopServiceAndCleanup("Error: Could not retrieve drop details.");
+                // MODIFICATION: Broadcast this failure as well for consistency.
+                Intent errorIntent = new Intent(ACTION_DOWNLOAD_ERROR);
+                errorIntent.putExtra(EXTRA_ERROR_MESSAGE, "Error: Could not retrieve drop details.\n\n" + getStackTraceAsString(e));
+                LocalBroadcastManager.getInstance(DownloadService.this).sendBroadcast(errorIntent);
+                stopServiceAndCleanup(null);
             }
         });
     }
@@ -134,7 +144,6 @@ public class DownloadService extends Service {
                     out = socket.getOutputStream();
                     PrintWriter writer = new PrintWriter(out, true);
 
-                    // Bug Fix: Request the cloakedFilename from the server
                     writer.println("GET /" + cloakedFilename + " HTTP/1.1");
                     writer.println("Host: " + host);
                     writer.println("Range: bytes=" + bytesDownloaded + "-");
@@ -182,7 +191,7 @@ public class DownloadService extends Service {
                         Thread.sleep(5000);
                     } catch (InterruptedException interruptedException) {
                         isCancelled = true;
-                        Thread.currentThread().interrupt(); // Preserve the interrupted status
+                        Thread.currentThread().interrupt();
                     }
                 }
             }
@@ -198,7 +207,6 @@ public class DownloadService extends Service {
                 if (!publicDir.exists()) {
                     publicDir.mkdirs();
                 }
-                // Bug Fix: Save the final file using the originalFilename
                 File finalFile = new File(publicDir, originalFilename);
 
                 boolean success = CloakingManager.restoreFile(tempCloakedFile, finalFile, secretNumber);
@@ -211,7 +219,11 @@ public class DownloadService extends Service {
                     }
                 } else {
                     db.collection("drop_requests").document(dropRequestId).update("status", "error");
-                    stopServiceAndCleanup("Error: File decryption failed.");
+                    // MODIFICATION: Broadcast the decryption failure instead of showing a toast.
+                    Intent errorIntent = new Intent(ACTION_DOWNLOAD_ERROR);
+                    errorIntent.putExtra(EXTRA_ERROR_MESSAGE, "Decryption failed. The secret number may be incorrect or the file may be corrupt.");
+                    LocalBroadcastManager.getInstance(this).sendBroadcast(errorIntent);
+                    stopServiceAndCleanup(null);
                 }
             } else {
                  stopServiceAndCleanup("Error: Download was incomplete.");
@@ -219,7 +231,12 @@ public class DownloadService extends Service {
 
         } catch (Exception e) {
             Log.e(TAG, "Download process failed.", e);
-            stopServiceAndCleanup("Error: " + e.getMessage());
+            // --- MODIFICATION: This is the main change to fix the "Error null" toast. ---
+            // Instead of showing a toast with a potentially null message, broadcast the full error details.
+            Intent errorIntent = new Intent(ACTION_DOWNLOAD_ERROR);
+            errorIntent.putExtra(EXTRA_ERROR_MESSAGE, getStackTraceAsString(e));
+            LocalBroadcastManager.getInstance(this).sendBroadcast(errorIntent);
+            stopServiceAndCleanup(null); // Stop service without a toast.
         } finally {
             try { if (socket != null) socket.close(); } catch (IOException ignored) {}
             try { if (fos != null) fos.close(); } catch (IOException ignored) {}
@@ -229,16 +246,22 @@ public class DownloadService extends Service {
         }
     }
 
+    // --- NEW: Method to generate the full error string from an exception ---
+    private String getStackTraceAsString(Exception e) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        e.printStackTrace(pw);
+        return sw.toString();
+    }
+
+
     private String readLine(InputStream in) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         int c;
         while ((c = in.read()) != -1) {
             if (c == '\r') {
-                // Handle CRLF line endings by looking ahead for LF
                 int next = in.read();
                 if (next != '\n' && next != -1) {
-                    // This was a standalone CR, not part of CRLF
-                    // We need to handle this case if it's possible in the input
                 }
                 break;
             }
@@ -306,7 +329,6 @@ public class DownloadService extends Service {
             tempCloakedFile.delete();
         }
 
-        // Client-side cleanup: Attempt to delete the Firestore document.
         if (dropRequestId != null) {
             db.collection("drop_requests").document(dropRequestId).delete()
                 .addOnSuccessListener(new OnSuccessListener<Void>() {
