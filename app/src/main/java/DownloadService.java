@@ -143,17 +143,15 @@ public class DownloadService extends Service {
             tempCloakedFile = new File(getCacheDir(), "downloading_" + System.currentTimeMillis() + ".log");
             updateNotification("Connecting...", true, 0, (int) totalSize);
 
-            // --- MODIFICATION: This is where the infinite connecting loop is fixed. ---
-            // It will now try to connect. If it fails, it will immediately throw the IOException,
-            // which is caught by the outer catch block, generating the error report.
-            // The `while` loop that caused the infinite retries has been removed from this section.
+            // --- THIS IS THE FIX ---
+            // The `while` loop has been removed. The code now tries to connect only ONCE.
+            // If the `new Socket(host, port)` fails, it will immediately jump to the `catch` block below.
             socket = new Socket(host, port);
             out = socket.getOutputStream();
             PrintWriter writer = new PrintWriter(out, true);
 
             writer.println("GET /" + cloakedFilename + " HTTP/1.1");
             writer.println("Host: " + host);
-            // We ask for the whole file now, as resume logic is complex and not fully implemented.
             writer.println("Range: bytes=0-");
             writer.println();
 
@@ -175,15 +173,14 @@ public class DownloadService extends Service {
             }
 
             if (contentLength == -1) {
-                 throw new IOException("Server did not provide Content-Length header.");
+                throw new IOException("Server did not provide Content-Length header.");
             }
 
-            // Adjust total size if server provides a different length (e.g., for partial content in future)
             if (totalSize == 0 || totalSize != contentLength) {
                 totalSize = contentLength;
             }
 
-            fos = new FileOutputStream(tempCloakedFile, false); // Overwrite instead of append
+            fos = new FileOutputStream(tempCloakedFile, false);
             byte[] buffer = new byte[8192];
             int bytesRead;
 
@@ -192,14 +189,15 @@ public class DownloadService extends Service {
                 bytesDownloaded += bytesRead;
                 updateNotification("Receiving...", true, (int) bytesDownloaded, (int) totalSize);
             }
-            // --- END OF MODIFICATION ---
+            // --- END OF FIX AREA ---
+
 
             if (isCancelled) {
                  stopServiceAndCleanup("Download cancelled.");
                  return;
             }
 
-            if (bytesDownloaded >= totalSize) { // Use >= to be safe
+            if (bytesDownloaded >= totalSize) {
                 updateNotification("Restoring file...", true, (int) totalSize, (int) totalSize);
                 File publicDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "HFM Drop");
                 if (!publicDir.exists()) {
