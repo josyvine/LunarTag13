@@ -29,8 +29,15 @@ public class CloakingManager {
     private static final String TRANSFORMATION = "AES/CBC/PKCS5Padding";
     private static final String PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA1";
     private static final String STATIC_SALT = "hfm_messenger_drop_salt";
+    // Must be 16 bytes for AES-128/192/256
     private static final byte[] STATIC_IV = "hfm_static_iv_16".getBytes(StandardCharsets.UTF_8);
 
+    /**
+     * Generates a secure AES key from a user-provided secret string (the "Secret Number").
+     * @param secret The secret string to derive the key from.
+     * @return A SecretKeySpec for use with AES.
+     * @throws Exception if key generation fails.
+     */
     private static SecretKeySpec generateKey(String secret) throws Exception {
         SecretKeyFactory factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM);
         KeySpec spec = new PBEKeySpec(secret.toCharArray(), STATIC_SALT.getBytes(), 65536, 256);
@@ -38,6 +45,13 @@ public class CloakingManager {
         return new SecretKeySpec(tmp.getEncoded(), ALGORITHM);
     }
 
+    /**
+     * The "Data Cloak" process. Encrypts a file, encodes it to Base64, and saves it as a fake .log file.
+     * @param context The application context to access the cache directory.
+     * @param inputFile The original file to cloak.
+     * @param secret The secret number for encryption.
+     * @return The cloaked file (fake .log), or null on failure.
+     */
     public static File cloakFile(Context context, File inputFile, String secret) {
         File encryptedTempFile = null;
         File cloakedFile = null;
@@ -48,6 +62,7 @@ public class CloakingManager {
         FileOutputStream cloakedFos = null;
 
         try {
+            // Step 1: Encrypt the file to a temporary binary file
             encryptedTempFile = new File(context.getCacheDir(), "encrypted_" + System.currentTimeMillis() + ".tmp");
             SecretKeySpec secretKey = generateKey(secret);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
@@ -70,6 +85,7 @@ public class CloakingManager {
 
             Log.d(TAG, "File encrypted successfully to temp file.");
 
+            // Step 2: Base64 encode the encrypted temp file into the final cloaked .log file
             cloakedFile = new File(context.getCacheDir(), "cloaked_" + System.currentTimeMillis() + ".log");
             encryptedFis = new FileInputStream(encryptedTempFile);
             cloakedFos = new FileOutputStream(cloakedFile, false);
@@ -80,7 +96,7 @@ public class CloakingManager {
                 while ((bytesRead = encryptedFis.read(buffer)) != -1) {
                     base64OutputStream.write(buffer, 0, bytesRead);
                 }
-                base64OutputStream.close();
+                base64OutputStream.close(); // Important to finalize encoding
             } else {
                 // --- THIS IS THE FIX for the slow cloaking ---
                 // This logic now streams the file instead of loading it all into memory.
@@ -105,18 +121,27 @@ public class CloakingManager {
             Log.e(TAG, "Cloaking process failed.", e);
             return null;
         } finally {
+            // Cleanup streams
             try { if (fis != null) fis.close(); } catch (Exception e) { /* ignore */ }
             try { if (fos != null) fos.close(); } catch (Exception e) { /* ignore */ }
             try { if (cos != null) cos.close(); } catch (Exception e) { /* ignore */ }
             try { if (encryptedFis != null) encryptedFis.close(); } catch (Exception e) { /* ignore */ }
             try { if (cloakedFos != null) cloakedFos.close(); } catch (Exception e) { /* ignore */ }
 
+            // Delete intermediate encrypted file
             if (encryptedTempFile != null && encryptedTempFile.exists()) {
                 encryptedTempFile.delete();
             }
         }
     }
 
+    /**
+     * The "Restoration" process. Decodes a cloaked file from Base64 and decrypts it.
+     * @param cloakedFile The downloaded fake .log file.
+     * @param outputFile The final destination for the restored original file.
+     * @param secret The secret number for decryption.
+     * @return true if successful, false otherwise.
+     */
     public static boolean restoreFile(File cloakedFile, File outputFile, String secret) {
         FileInputStream fis = null;
         CipherInputStream cis = null;
@@ -124,6 +149,7 @@ public class CloakingManager {
         InputStream base64InputStream = null;
 
         try {
+            // Step 1: Base64 decode the cloaked file into a CipherInputStream
             SecretKeySpec secretKey = generateKey(secret);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             IvParameterSpec iv = new IvParameterSpec(STATIC_IV);
@@ -141,6 +167,7 @@ public class CloakingManager {
 
             cis = new CipherInputStream(base64InputStream, cipher);
 
+            // Step 2: Write the decrypted stream to the output file
             fos = new FileOutputStream(outputFile);
             byte[] buffer = new byte[8192];
             int bytesRead;
@@ -154,14 +181,17 @@ public class CloakingManager {
 
         } catch (Exception e) {
             Log.e(TAG, "Restoration process failed.", e);
+            // If decryption fails, delete the partially written file
             if (outputFile != null && outputFile.exists()) {
                 outputFile.delete();
             }
             return false;
         } finally {
+            // Cleanup streams
             try { if (fis != null) fis.close(); } catch (Exception e) { /* ignore */ }
             try { if (cis != null) cis.close(); } catch (Exception e) { /* ignore */ }
             try { if (fos != null) fos.close(); } catch (Exception e) { /* ignore */ }
+            // base64InputStream is handled by cis.close()
         }
     }
 }
