@@ -9,7 +9,11 @@ android {
 
     defaultConfig {
         applicationId "com.safevoice.app"
-        minSdkVersion 23 // Optimized for Android 6.0+ as requested
+        
+        // --- THIS IS THE FIX ---
+        // The new WebRTC library requires API level 26 or higher.
+        minSdkVersion 26 
+        
         targetSdkVersion 34
         versionCode 1
         versionName "1.0"
