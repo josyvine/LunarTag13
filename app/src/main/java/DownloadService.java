@@ -255,12 +255,10 @@ public class DownloadService extends Service {
     }
 
     private void broadcastError(String message) {
-        // This will be received by HFMDropActivity for the alert dialog
-        Intent hfmDropErrorIntent = new Intent(ACTION_DOWNLOAD_ERROR);
-        hfmDropErrorIntent.putExtra(EXTRA_ERROR_MESSAGE, message);
-        LocalBroadcastManager.getInstance(this).sendBroadcast(hfmDropErrorIntent);
-
-        // This will be received by DropProgressActivity if it is open
+        Intent errorIntent = new Intent(ACTION_DOWNLOAD_ERROR);
+        errorIntent.putExtra(EXTRA_ERROR_MESSAGE, message);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(errorIntent);
+        
         LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(DropProgressActivity.ACTION_TRANSFER_ERROR));
     }
 
