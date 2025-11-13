@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+
+    <!-- This makes the inside of the oval transparent, so you can see the camera. -->
+    <solid
+        android:color="@android:color/transparent" />
+
+    <!-- This creates the visible white border for the oval. -->
+    <stroke
+        android:width="4dp"
+        android:color="@android:color/white" />
+
+</shape>
