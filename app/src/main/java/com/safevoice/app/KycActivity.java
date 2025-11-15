@@ -47,15 +47,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Activity for performing on-device KYC (Know Your Customer) verification.
- * It uses CameraX for the camera feed, ML Kit for text and face detection,
- * and a custom TFLite model (via FaceVerifier) for face matching.
- */
 public class KycActivity extends AppCompatActivity {
 
     private static final String TAG = "KycActivity";
-    private static final double FACE_MATCH_THRESHOLD = 0.8; // Similarity threshold for a match
+    private static final double FACE_MATCH_THRESHOLD = 0.8;
 
     private enum KycState {
         SCANNING_ID,
@@ -133,7 +128,6 @@ public class KycActivity extends AppCompatActivity {
             Log.e(TAG, "Use case binding failed", e);
         }
 
-        // The ID in your XML is 'camera_preview', which ViewBinding converts to 'cameraPreview'.
         preview.setSurfaceProvider(binding.cameraPreview.getSurfaceProvider());
     }
 
@@ -147,27 +141,22 @@ public class KycActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             switch (currentState) {
                 case SCANNING_ID:
-                    // When scanning the ID, show the guide box and set its background to the RECTANGLE.
                     binding.guideBox.setVisibility(View.VISIBLE);
-                    binding.guideBox.setBackgroundResource(R.drawable.bg_guide_box); // Your original rectangle drawable
+                    binding.guideBox.setBackgroundResource(R.drawable.bg_guide_box);
                     binding.textInstructions.setText(R.string.kyc_instructions_id);
                     break;
                 case SCANNING_FACE:
-                    // When scanning the face, show the guide box and set its background to the OVAL.
                     binding.guideBox.setVisibility(View.VISIBLE);
-                    binding.guideBox.setBackgroundResource(R.drawable.oval_frame_drawable); // The new oval shape
+                    binding.guideBox.setBackgroundResource(R.drawable.oval_frame_drawable);
                     binding.textInstructions.setText(R.string.kyc_instructions_face);
-                    // This call will now safely rebind the camera to the front lens.
                     bindCameraUseCases();
                     break;
                 case VERIFYING:
-                    // Keep the oval visible while verifying
                     binding.guideBox.setVisibility(View.VISIBLE);
                     binding.textInstructions.setText(R.string.kyc_status_verifying);
                     binding.progressBar.setVisibility(View.VISIBLE);
                     break;
                 case COMPLETE:
-                    // When finished, hide the guide box and progress bar.
                     binding.guideBox.setVisibility(View.GONE);
                     binding.progressBar.setVisibility(View.GONE);
                     break;
@@ -234,9 +223,7 @@ public class KycActivity extends AppCompatActivity {
                     }
 
                     if (verifiedName != null && idCardEmbedding != null) {
-                        // Use compareAndSet to ensure this block runs only ONCE.
                         if (isProcessing.compareAndSet(false, true)) {
-                            // Post the action to the main thread and let it handle the camera logic.
                             runOnUiThread(() -> proceedToFaceScan());
                         }
                     }
@@ -246,7 +233,6 @@ public class KycActivity extends AppCompatActivity {
         private Task<List<Face>> processLiveFaceImage(InputImage image, ImageProxy imageProxy) {
             return faceDetector.process(image)
                 .addOnSuccessListener(faces -> {
-                    // isProcessing is true here. compareAndSet to false to prevent re-entry.
                     if (!faces.isEmpty() && isProcessing.compareAndSet(true, false)) {
                         currentState = KycState.VERIFYING;
                         updateUIForState();
@@ -283,6 +269,7 @@ public class KycActivity extends AppCompatActivity {
         return null;
     }
 
+    // --- THIS IS THE CORRECTED METHOD ---
     private void handleVerificationSuccess() {
         Log.i(TAG, "Verification SUCCESSFUL. Name: " + verifiedName);
         currentState = KycState.COMPLETE;
@@ -293,8 +280,10 @@ public class KycActivity extends AppCompatActivity {
             Map<String, Object> userData = new HashMap<>();
             userData.put("isVerified", true);
             userData.put("verifiedName", verifiedName);
-            // Use set with merge to create the document if it doesn't exist, or update it if it does.
-            // This is safer than using update(), which can fail if the document doesn't exist yet.
+            // --- FIX: ADD THE USER'S EMAIL TO THE DATA BEING SAVED ---
+            // This ensures the email is in the database and can be searched.
+            userData.put("email", user.getEmail());
+
             FirebaseFirestore.getInstance().collection("users").document(user.getUid())
                     .set(userData, SetOptions.merge())
                     .addOnSuccessListener(aVoid -> {
