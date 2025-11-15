@@ -18,6 +18,13 @@
         android:name="com.safevoice.app.ui.contacts.ContactsFragment"
         android:label="@string/title_contacts"
         tools:layout="@layout/fragment_contacts" />
+        
+    <!-- THIS IS THE NEW FRAGMENT DESTINATION YOU ARE ADDING -->
+    <fragment
+        android:id="@+id/navigation_profile"
+        android:name="com.safevoice.app.ui.profile.ProfileFragment"
+        android:label="@string/title_profile"
+        tools:layout="@layout/fragment_profile" />
 
     <!-- Settings Screen Fragment Destination -->
     <fragment
