@@ -11,10 +11,14 @@
         2.  <b>Geotagging:</b> When a photo is captured, the app will embed your current GPS coordinates, timestamp, and other details into a permanent watermark on the image.\n\n
         3.  <b>Audit & Compliance:</b> All critical actions (photo captures, timestamp assignments, sending) are logged for auditing purposes. The real capture time is always recorded, even when a custom timestamp is used.\n\n
         4.  <b>Automated Sending:</b> The app is designed to automatically schedule and initiate sending photos to a pre-configured WhatsApp group at their assigned time.\n\n
-        5.  <b>No Guarantee:</b> The reliability of this app depends on factors outside of our control, including device performance, battery level, operating system restrictions, network signal, and GPS availability.\n\n
+        5.  <b>Accessibility Service (Optional):</b> To fully automate sending photos to WhatsApp, this app uses an Accessibility Service. You must manually enable this in your phone\'s settings. The app will guide you. This service ONLY interacts with WhatsApp to send photos and does not monitor any other activity.\n\n
         By clicking "Accept & Continue", you acknowledge these terms and agree to use Lunar Tag at your own risk.
     </string>
     <string name="onboarding_continue_button">Accept &amp; Continue</string>
+
+    <!-- This is the NEW string that was omitted -->
+    <string name="accessibility_service_description">Lunar Tag Accessibility Service: This service helps automate sending your geotagged photos through WhatsApp. It can identify the correct WhatsApp group and press the send button for you. The app will only use this service for this specific purpose.</string>
+
 
     <!-- Bottom Navigation Titles -->
     <string name="title_dashboard">Dashboard</string>
