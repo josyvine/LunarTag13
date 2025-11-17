@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Primary Palette for Safe Voice (Serious, Security-focused) -->
-    <color name="colorPrimary">#B71C1C</color> <!-- A deep, serious red -->
-    <color name="colorPrimaryDark">#7F0000</color> <!-- A darker red for the status bar -->
-    <color name="colorAccent">#FFD600</color> <!-- A bright yellow/amber for accents and buttons -->
+    <!-- Primary Palette for Lunar Tag (Professional, Authoritative) -->
+    <color name="colorPrimary">#1A237E</color> <!-- A deep, professional blue -->
+    <color name="colorPrimaryDark">#000051</color> <!-- A darker blue for the status bar -->
+    <color name="colorAccent">#FFAB00</color> <!-- A bright amber/orange for accents and buttons -->
 
     <!-- Standard Colors -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- UI Element Colors for Dark/Light Mode -->
+    <!-- UI Element Colors for Light Mode -->
     <color name="textColorPrimary">#DE000000</color> <!-- 87% black for text on light backgrounds -->
     <color name="textColorSecondary">#8A000000</color> <!-- 54% black for secondary text -->
     <color name="windowBackground">#FFFFFF</color>
