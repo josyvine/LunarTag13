@@ -66,6 +66,8 @@ public class MainActivity extends AppCompatActivity {
 
                         if (allGranted) {
                             Toast.makeText(MainActivity.this, "All permissions granted. Lunar Tag is ready.", Toast.LENGTH_SHORT).show();
+                            // This is the action to take after permissions are successfully granted.
+                            onPermissionsGranted();
                         } else {
                             Toast.makeText(MainActivity.this, "Some permissions were denied. Core features may not work.", Toast.LENGTH_LONG).show();
                         }
@@ -80,14 +82,31 @@ public class MainActivity extends AppCompatActivity {
      */
     private void checkAndRequestPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
+        boolean allPermissionsAlreadyGranted = true;
         for (String permission : requiredPermissions) {
             if (permission != null && ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 permissionsToRequest.add(permission);
+                allPermissionsAlreadyGranted = false;
             }
         }
 
         if (!permissionsToRequest.isEmpty()) {
             permissionLauncher.launch(permissionsToRequest.toArray(new String[0]));
         }
+
+        // If all permissions were already granted from a previous launch,
+        // perform the success action immediately.
+        if (allPermissionsAlreadyGranted) {
+            onPermissionsGranted();
+        }
+    }
+
+    /**
+     * Helper method to be called once all necessary permissions have been granted.
+     */
+    private void onPermissionsGranted() {
+        // This is a placeholder for any logic that needs to run after permissions are confirmed.
+        // For example, initializing location services or other components.
+        // This structure matches your reference file exactly.
     }
 }
