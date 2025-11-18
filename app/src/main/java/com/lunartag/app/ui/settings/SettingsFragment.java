@@ -13,7 +13,9 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.navigation.fragment.NavHostFragment;
 
+import com.lunartag.app.R;
 import com.lunartag.app.databinding.FragmentSettingsBinding;
 
 import java.util.Calendar;
@@ -43,6 +45,9 @@ public class SettingsFragment extends Fragment {
 
         loadSettings();
         setupClickListeners();
+
+        // This new method will check if the admin button should be shown
+        setupAdminFeatures();
     }
 
     private void setupClickListeners() {
@@ -131,9 +136,35 @@ public class SettingsFragment extends Fragment {
         timePickerDialog.show();
     }
 
+    /**
+     * This new method checks for the admin feature toggle and configures the UI accordingly.
+     */
+    private void setupAdminFeatures() {
+        // Access the feature toggles preferences that are set by the Firebase service
+        SharedPreferences featureTogglePrefs = requireActivity().getSharedPreferences("LunarTagFeatureToggles", Context.MODE_PRIVATE);
+        boolean isAdminModeEnabled = featureTogglePrefs.getBoolean("customTimestampEnabled", false);
+
+        if (isAdminModeEnabled) {
+            // If the flag from Firebase is true, make the admin button visible
+            binding.buttonAdminScheduleEditor.setVisibility(View.VISIBLE);
+
+            // Add a click listener to the button to navigate to the schedule editor screen
+            binding.buttonAdminScheduleEditor.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    NavHostFragment.findNavController(SettingsFragment.this)
+                            .navigate(R.id.action_settings_to_schedule_editor);
+                }
+            });
+        } else {
+            // If the flag is false, ensure the button is hidden from regular users
+            binding.buttonAdminScheduleEditor.setVisibility(View.GONE);
+        }
+    }
+
     @Override
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;
     }
-  }
+}
