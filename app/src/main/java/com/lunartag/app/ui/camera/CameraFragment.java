@@ -19,7 +19,6 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,26 +37,25 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import com.lunartag.app.R;
 import com.lunartag.app.data.AppDatabase;
 import com.lunartag.app.data.PhotoDao;
 import com.lunartag.app.databinding.FragmentCameraBinding;
 import com.lunartag.app.model.Photo;
-import com.lunartag.app.utils.ExifUtils;
 import com.lunartag.app.utils.ImageUtils;
 import com.lunartag.app.utils.LocationProvider;
-import com.lunartag.app.utils.Scheduler;
 import com.lunartag.app.utils.WatermarkUtils;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -68,7 +66,7 @@ import java.util.concurrent.Executors;
 public class CameraFragment extends Fragment {
 
     private static final String TAG = "CameraFragment";
-    
+
     // Preferences for Admin/Schedule Mode
     private static final String PREFS_SCHEDULE = "LunarTagSchedule";
     private static final String KEY_TIMESTAMP_LIST = "timestamp_list";
@@ -159,7 +157,7 @@ public class CameraFragment extends Fragment {
 
                 // Unbind and Bind
                 cameraProvider.unbindAll();
-                
+
                 // Bind and save Camera instance for Zoom control
                 camera = cameraProvider.bindToLifecycle(
                         getViewLifecycleOwner(), cameraSelector, preview, imageCapture);
@@ -211,55 +209,61 @@ public class CameraFragment extends Fragment {
         }
 
         // 2. Get Location (Async)
+        // NOTE: We keep the logic robust. If location is null, we still save.
         locationProvider.getCurrentLocation(location -> {
-            
+
             // 3. Determine Timestamp (Real vs Admin Assigned)
             long realTime = System.currentTimeMillis();
             long assignedTime = realTime;
-            boolean isAdminMode = false;
 
             // Check Admin Logic
             SharedPreferences togglePrefs = requireContext().getSharedPreferences(PREFS_TOGGLES, Context.MODE_PRIVATE);
             if (togglePrefs.getBoolean(KEY_ADMIN_ENABLED, false)) {
-                isAdminMode = true;
                 assignedTime = getNextScheduledTimestamp(realTime);
             }
 
             // 4. Prepare Watermark Data
             String companyName = "My Company"; // Should load from Settings
             String address = getAddressFromLocation(location);
-            
+
             SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy hh:mm:ss a", Locale.US);
             String timeString = sdf.format(new Date(assignedTime));
-            
-            String gpsString = "Lat: " + (location != null ? location.getLatitude() : "0.0") + 
-                               " Lon: " + (location != null ? location.getLongitude() : "0.0");
+
+            String gpsString = "Lat: " + (location != null ? location.getLatitude() : "0.0") +
+                    " Lon: " + (location != null ? location.getLongitude() : "0.0");
 
             String[] watermarkLines = {
-                "GPS Map Camera",
-                companyName,
-                address,
-                gpsString,
-                timeString
+                    "GPS Map Camera",
+                    companyName,
+                    address,
+                    gpsString,
+                    timeString
             };
 
             // 5. Apply Watermark
             WatermarkUtils.addWatermark(bitmap, null, watermarkLines);
 
-            // 6. Save to Public Gallery (MediaStore)
-            Uri savedUri = saveImageToGallery(getContext(), bitmap, "LunarTag_" + realTime);
+            // 6. Save to INTERNAL APP STORAGE first (Guarantees a valid File Path for DB)
+            String filename = "LunarTag_" + realTime;
+            String absolutePath = saveImageToInternalStorage(getContext(), bitmap, filename);
 
-            if (savedUri != null) {
-                Log.d(TAG, "Image saved to Gallery: " + savedUri.toString());
-                
-                // 7. Save to Local Database (Room)
-                savePhotoToDatabase(savedUri.toString(), realTime, assignedTime, location);
-                
-                // 8. Update UI (Main Thread)
+            if (absolutePath != null) {
+                Log.d(TAG, "Image saved to Internal Storage: " + absolutePath);
+
+                // 7. Export to Public Gallery (So user sees it in File Manager)
+                exportToPublicGallery(getContext(), absolutePath, filename);
+
+                // 8. Save to Local Database (Room) using the valid path
+                savePhotoToDatabase(absolutePath, realTime, assignedTime, location);
+
+                // 9. Update UI (Main Thread)
                 new android.os.Handler(Looper.getMainLooper()).post(() -> {
-                     Toast.makeText(getContext(), "Photo Saved & Watermarked!", Toast.LENGTH_SHORT).show();
-                     updateSlotCounter(); // Refresh counter if in admin mode
+                    Toast.makeText(getContext(), "Photo Saved & Watermarked!", Toast.LENGTH_SHORT).show();
+                    updateSlotCounter(); // Refresh counter if in admin mode
                 });
+            } else {
+                new android.os.Handler(Looper.getMainLooper()).post(() ->
+                        Toast.makeText(getContext(), "Failed to save image!", Toast.LENGTH_SHORT).show());
             }
         });
     }
@@ -270,7 +274,7 @@ public class CameraFragment extends Fragment {
         SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SCHEDULE, Context.MODE_PRIVATE);
         String json = prefs.getString(KEY_TIMESTAMP_LIST, "[]");
         List<Long> list = new ArrayList<>();
-        
+
         try {
             JSONArray jsonArray = new JSONArray(json);
             for (int i = 0; i < jsonArray.length(); i++) {
@@ -286,7 +290,7 @@ public class CameraFragment extends Fragment {
 
         // Pop the first one
         long assigned = list.remove(0);
-        
+
         // Save the updated list back
         JSONArray updatedArray = new JSONArray();
         for (Long ts : list) {
@@ -316,45 +320,69 @@ public class CameraFragment extends Fragment {
         }
     }
 
-    // --- Storage Logic (MediaStore) ---
+    // --- Storage Logic ---
 
-    private Uri saveImageToGallery(Context context, Bitmap bitmap, String filename) {
-        OutputStream fos;
-        Uri imageUri = null;
+    /**
+     * Saves the bitmap to the app's private external files directory.
+     * This works on ALL Android versions without permissions and returns a valid file path.
+     */
+    private String saveImageToInternalStorage(Context context, Bitmap bitmap, String filename) {
+        File directory = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        if (directory == null) return null;
 
+        File file = new File(directory, filename + ".jpg");
+        try (OutputStream fos = new FileOutputStream(file)) {
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos);
+            return file.getAbsolutePath();
+        } catch (IOException e) {
+            Log.e(TAG, "Error saving internal image", e);
+            return null;
+        }
+    }
+
+    /**
+     * Copies the internally saved file to the public MediaStore so it is visible in the Gallery app.
+     */
+    private void exportToPublicGallery(Context context, String internalPath, String filename) {
+        if (internalPath == null) return;
+        
         try {
+            File internalFile = new File(internalPath);
+            if (!internalFile.exists()) return;
+
             ContentResolver resolver = context.getContentResolver();
             ContentValues contentValues = new ContentValues();
             contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, filename + ".jpg");
             contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg");
-            // Save to "Pictures/LunarTag"
             contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + File.separator + "LunarTag");
 
-            imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues);
+            Uri imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues);
 
-            if (imageUri == null) return null;
-
-            fos = resolver.openOutputStream(imageUri);
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos);
-            if (fos != null) fos.close();
-
-            return imageUri;
-        } catch (IOException e) {
-            Log.e(TAG, "Error saving to gallery", e);
-            return null;
+            if (imageUri != null) {
+                try (OutputStream out = resolver.openOutputStream(imageUri);
+                     InputStream in = new FileInputStream(internalFile)) {
+                    byte[] buffer = new byte[1024];
+                    int len;
+                    while ((len = in.read(buffer)) > 0) {
+                        out.write(buffer, 0, len);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to export to public gallery", e);
         }
     }
 
     // --- Database Logic ---
 
-    private void savePhotoToDatabase(String uriString, long realTime, long assignedTime, Location loc) {
+    private void savePhotoToDatabase(String filePath, long realTime, long assignedTime, Location loc) {
         Photo photo = new Photo();
-        photo.setFilePath(uriString); // Store URI as path
+        photo.setFilePath(filePath); // Store REAL FILE PATH
         photo.setCaptureTimestampReal(realTime);
         photo.setAssignedTimestamp(assignedTime);
         photo.setCreatedAt(System.currentTimeMillis());
         photo.setStatus("PENDING");
-        
+
         if (loc != null) {
             photo.setLat(loc.getLatitude());
             photo.setLon(loc.getLongitude());
@@ -363,13 +391,9 @@ public class CameraFragment extends Fragment {
 
         AppDatabase db = AppDatabase.getDatabase(getContext());
         PhotoDao dao = db.photoDao();
-        long id = dao.insertPhoto(photo);
-        
-        // Schedule the send
-        // Scheduler.schedulePhotoSend(getContext(), id, uriString, assignedTime); 
-        // Note: We might need to adjust Scheduler to handle URIs instead of File paths later.
+        dao.insertPhoto(photo);
     }
-    
+
     private String getAddressFromLocation(Location location) {
         if (location == null) return "Location Unknown";
         try {
@@ -385,6 +409,7 @@ public class CameraFragment extends Fragment {
     }
 
     private boolean allPermissionsGranted() {
+        // We only check Camera/Location here as storage permissions are handled in MainActivity
         String[] requiredPermissions = {Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION};
         for (String permission : requiredPermissions) {
             if (ContextCompat.checkSelfPermission(getContext(), permission) != PackageManager.PERMISSION_GRANTED) {
