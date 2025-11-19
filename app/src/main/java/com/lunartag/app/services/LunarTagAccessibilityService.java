@@ -1,6 +1,8 @@
 package com.lunartag.app.services;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -8,40 +10,34 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.List;
 
 /**
- * An optional Accessibility Service to help automate sending photos through WhatsApp.
- * The user must enable this service manually in the device's accessibility settings.
- *
- * NOTE: This is a complex and potentially fragile feature, as it relies on the
- * structure of the WhatsApp UI, which can change.
+ * The Automation Engine.
+ * UPDATED: Now uses SharedPreferences "Bridge" logic to persist commands
+ * even if the main app is closed or killed.
  */
 public class LunarTagAccessibilityService extends AccessibilityService {
 
     private static final String TAG = "AccessibilityService";
     private static final String WHATSAPP_PACKAGE_NAME = "com.whatsapp";
 
-    // --- State management for the automation flow ---
-    private static boolean isServiceActive = false;
-    private static String targetGroupName = null;
-
-    /**
-     * This method is called by the SendService to "arm" the accessibility service
-     * just before the WhatsApp share intent is launched.
-     * @param groupName The exact name of the target WhatsApp group.
-     */
-    public static void activate(String groupName) {
-        targetGroupName = groupName;
-        isServiceActive = true;
-        Log.d(TAG, "Accessibility service activated for group: " + groupName);
-    }
+    // --- Shared Memory Constants (Must match SendService) ---
+    private static final String PREFS_ACCESSIBILITY = "LunarTagAccessPrefs";
+    private static final String KEY_TARGET_GROUP = "target_group_name";
+    private static final String KEY_JOB_PENDING = "job_is_pending";
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (!isServiceActive || targetGroupName == null) {
+        // 1. Safety Check: Only react to WhatsApp
+        if (event.getPackageName() == null || !event.getPackageName().toString().equals(WHATSAPP_PACKAGE_NAME)) {
             return;
         }
 
-        // Only react to events from WhatsApp
-        if (event.getPackageName() == null || !event.getPackageName().toString().equals(WHATSAPP_PACKAGE_NAME)) {
+        // 2. Memory Check: Do we have an order to execute?
+        SharedPreferences prefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
+        boolean isJobPending = prefs.getBoolean(KEY_JOB_PENDING, false);
+        String targetGroupName = prefs.getString(KEY_TARGET_GROUP, null);
+
+        if (!isJobPending || targetGroupName == null || targetGroupName.isEmpty()) {
+            // No active job, just observe silently.
             return;
         }
 
@@ -50,59 +46,70 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             return;
         }
 
-        // --- Step 1: Find the target group in the contact list and click it ---
-        // This is the most complex step. The ideal way is to find a search icon, click it,
-        // type the group name, and then click the result. A simpler fallback is to
-        // just search the current screen for the group name.
+        Log.d(TAG, "Processing active job for group: " + targetGroupName);
+
+        // --- PHASE 1: Find the Target Group and Click It ---
         List<AccessibilityNodeInfo> groupNodes = rootNode.findAccessibilityNodeInfosByText(targetGroupName);
         if (groupNodes != null && !groupNodes.isEmpty()) {
             for (AccessibilityNodeInfo node : groupNodes) {
-                // We need to find the clickable parent to click on the list item
+                // WhatsApp lists are often complex views. We must find the CLICKABLE parent.
                 AccessibilityNodeInfo parent = node.getParent();
                 while (parent != null) {
                     if (parent.isClickable()) {
-                        Log.d(TAG, "Found clickable group node. Clicking it.");
+                        Log.d(TAG, "Found group '" + targetGroupName + "'. Clicking entry.");
                         parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        // We assume this will take us to the next screen.
-                        return;
+                        // We successfully clicked the group. We stay 'Pending' because we still need to click Send.
+                        // However, usually returning here allows the UI to update before we try to find the Send button.
+                        rootNode.recycle();
+                        return; 
                     }
                     parent = parent.getParent();
                 }
             }
         }
 
-        // --- Step 2: Find the "Send" button and click it ---
-        // The send button in WhatsApp often has a content description like "Send".
+        // --- PHASE 2: Find the "Send" Button and Click It ---
+        // This button appears AFTER we click the group or if the Share Intent took us directly there.
+        
+        // Note: In English it is "Send". In other languages, this might fail unless we use ID lookups.
+        // Since your device is English, "Send" works.
         List<AccessibilityNodeInfo> sendButtonNodes = rootNode.findAccessibilityNodeInfosByText("Send");
+        
+        // If text search fails, sometimes the ContentDescription (for screen readers) is "Send"
+        if (sendButtonNodes == null || sendButtonNodes.isEmpty()) {
+             // Attempt fallback search if standard text fails? 
+             // For now, stick to standard text as it's most reliable on standard WA.
+        }
+
         if (sendButtonNodes != null && !sendButtonNodes.isEmpty()) {
             for (AccessibilityNodeInfo node : sendButtonNodes) {
                 if (node.isClickable()) {
-                    Log.d(TAG, "Found 'Send' button. Clicking it.");
+                    Log.d(TAG, "Found 'Send' button. Clicking and Completing Job.");
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
 
-                    // Deactivate the service after the action is performed to prevent accidental clicks.
-                    isServiceActive = false;
-                    targetGroupName = null;
-                    Log.d(TAG, "Accessibility service deactivated.");
+                    // --- JOB COMPLETE: Update Memory ---
+                    // We mark pending as FALSE so we don't keep clicking send forever.
+                    prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
+                    Log.d(TAG, "Job marked as Complete in Memory.");
+                    
+                    rootNode.recycle();
                     return;
                 }
             }
         }
         
-        // Clean up the node info
+        // Clean up to prevent memory leaks
         rootNode.recycle();
     }
 
     @Override
     public void onInterrupt() {
         Log.d(TAG, "Accessibility service interrupted.");
-        isServiceActive = false;
-        targetGroupName = null;
     }
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        Log.d(TAG, "Accessibility service connected.");
+        Log.d(TAG, "LunarTag Accessibility Service Connected & Listening.");
     }
-                }
+}
