@@ -1,14 +1,19 @@
 package com.lunartag.app.utils;
 
+import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.text.TextPaint;
 
+import com.lunartag.app.R;
+
 /**
  * A utility class with static methods for rendering the watermark onto a photo.
+ * UPDATED: Now draws App Logo and Name in the top-right corner.
  */
 public class WatermarkUtils {
 
@@ -17,11 +22,12 @@ public class WatermarkUtils {
 
     /**
      * Renders the complete watermark block onto the provided Bitmap.
+     * @param context The Android Context (needed to load the logo resource).
      * @param originalBitmap The original, mutable photo bitmap.
      * @param mapBitmap The small, pre-rendered bitmap of the map preview.
      * @param lines An array of strings, with each string representing one line of the watermark text.
      */
-    public static void addWatermark(Bitmap originalBitmap, Bitmap mapBitmap, String[] lines) {
+    public static void addWatermark(Context context, Bitmap originalBitmap, Bitmap mapBitmap, String[] lines) {
         if (originalBitmap == null || lines == null || lines.length == 0) {
             return;
         }
@@ -30,43 +36,90 @@ public class WatermarkUtils {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
-        // --- Configure Paint objects ---
+        // --- 1. Configure Main Text Paint ---
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(width / 35.0f); // Dynamic text size based on image width
+        textPaint.setTextSize(width / 40.0f); // Slightly smaller text for address to fit better
         textPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
+
+        // --- 2. Configure Branding Paint (App Name) ---
+        TextPaint brandPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        brandPaint.setColor(Color.YELLOW); // Yellow color looks professional on black
+        brandPaint.setTextSize(width / 35.0f); // Slightly larger/bolder than body text
+        brandPaint.setFakeBoldText(true);
+        brandPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
 
         Paint backgroundPaint = new Paint();
         backgroundPaint.setColor(Color.BLACK);
-        backgroundPaint.setAlpha(128); // 50% transparent
+        backgroundPaint.setAlpha(140); // Semi-transparent black (increased from 128 for better readability)
 
-        // --- Calculate Dimensions ---
+        // --- 3. Calculate Dimensions ---
         float textHeight = textPaint.descent() - textPaint.ascent();
-        float blockHeight = (textHeight * lines.length) + (lines.length * 10) + 20; // Add padding
+        // Height is roughly text lines + padding. Added extra padding for the Logo header.
+        float blockHeight = (textHeight * lines.length) + (lines.length * 12) + 40;
+
+        // Ensure block is tall enough for the map if map exists
         if (mapBitmap != null && mapBitmap.getHeight() + 20 > blockHeight) {
-            blockHeight = mapBitmap.getHeight() + 20; // Ensure block is tall enough for the map
+            blockHeight = mapBitmap.getHeight() + 40;
         }
 
-        // --- Draw Background ---
-        Rect backgroundRect = new Rect(0, (int)(height - blockHeight), width, height);
+        float watermarkTop = height - blockHeight;
+
+        // --- 4. Draw Background ---
+        Rect backgroundRect = new Rect(0, (int) watermarkTop, width, height);
         canvas.drawRect(backgroundRect, backgroundPaint);
 
-        // --- Draw Map Bitmap (if provided) ---
+        // --- 5. Draw Map Bitmap (if provided) ---
         float mapLeft = 20;
-        float mapTop = height - blockHeight + 10;
+        float mapTop = watermarkTop + 20;
         if (mapBitmap != null) {
             canvas.drawBitmap(mapBitmap, mapLeft, mapTop, null);
         }
 
-        // --- Draw Text Lines ---
-        float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 40 : 20;
-        float currentY = height - blockHeight + textHeight + 5;
+        // --- 6. Draw Branding (Top-Right Corner) ---
+        // Load the Logo. We assume 'lunartag' is the file name in drawable folder.
+        Bitmap logo = null;
+        if (context != null) {
+            logo = BitmapFactory.decodeResource(context.getResources(), R.drawable.lunartag);
+            // Fallback to launcher icon if specific logo not found, prevents crash
+            if (logo == null) {
+                logo = BitmapFactory.decodeResource(context.getResources(), R.mipmap.ic_launcher);
+            }
+        }
+
+        if (logo != null) {
+            // Resize logo to be small (e.g., 8% of screen width)
+            int targetLogoSize = (int) (width * 0.08); 
+            // Ensure it's at least a visible size
+            if (targetLogoSize < 50) targetLogoSize = 50; 
+
+            Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, targetLogoSize, targetLogoSize, true);
+
+            float logoX = width - targetLogoSize - 30; // 30px padding from right
+            float logoY = watermarkTop + 20; // 20px padding from top of black box
+
+            canvas.drawBitmap(scaledLogo, logoX, logoY, null);
+
+            // Draw App Name "Lunar Tag" to the LEFT of the logo
+            String appName = "Lunar Tag";
+            float textWidth = brandPaint.measureText(appName);
+            float brandTextX = logoX - textWidth - 20;
+            // Center text vertically relative to logo
+            float brandTextY = logoY + (targetLogoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
+
+            canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
+        }
+
+        // --- 7. Draw Main Text Lines ---
+        float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 50 : 40;
+        // Start text lower to account for the Branding Header we just drew
+        float currentY = watermarkTop + textHeight + 40; 
 
         for (String line : lines) {
             if (line != null) {
                 canvas.drawText(line, textLeft, currentY, textPaint);
-                currentY += textHeight;
+                currentY += (textHeight + 10); // Add line spacing
             }
         }
     }
-            }
+}
