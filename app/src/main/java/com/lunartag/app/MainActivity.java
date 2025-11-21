@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultCallback;
@@ -13,7 +14,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
-import androidx.navigation.ui.NavigationUI;
 
 import com.lunartag.app.databinding.ActivityMainBinding;
 import com.lunartag.app.firebase.RemoteConfigManager;
@@ -23,8 +23,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The main screen of the application, which hosts the bottom navigation and various fragments.
- * It is responsible for requesting all necessary runtime permissions upon creation.
+ * The main screen of the application.
+ * UPDATED: Handles navigation for the new 6-icon Horizontal Scroll View.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -63,16 +63,74 @@ public class MainActivity extends AppCompatActivity {
             };
         }
 
-        // NEW: Trigger the Remote Config fetch immediately when the app starts.
-        // This replaces the passive FCM listener with an active check.
+        // Trigger Remote Config
         RemoteConfigManager.fetchRemoteConfig(this);
 
+        // Setup Navigation Controller
         NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.nav_host_fragment_activity_main);
+        
         if (navHostFragment != null) {
             navController = navHostFragment.getNavController();
-            NavigationUI.setupWithNavController(binding.navView, navController);
         }
+
+        // --- NEW: CUSTOM NAVIGATION LOGIC FOR 6 ICONS ---
+        
+        // 1. Dashboard
+        binding.navDashboard.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_dashboard);
+                updateIconVisuals(binding.navDashboard);
+            }
+        });
+
+        // 2. Camera
+        binding.navCamera.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_camera);
+                updateIconVisuals(binding.navCamera);
+            }
+        });
+
+        // 3. Gallery
+        binding.navGallery.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_gallery);
+                updateIconVisuals(binding.navGallery);
+            }
+        });
+
+        // 4. Robot (Automation Mode)
+        binding.navRobot.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_robot);
+                updateIconVisuals(binding.navRobot);
+            }
+        });
+
+        // 5. Apps (Clone Selector)
+        binding.navApps.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_apps);
+                updateIconVisuals(binding.navApps);
+            }
+        });
+
+        // 6. Settings
+        binding.navSettings.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_settings);
+                updateIconVisuals(binding.navSettings);
+            }
+        });
+
+        // -------------------------------------------------
 
         permissionLauncher = registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(),
                 new ActivityResultCallback<Map<String, Boolean>>() {
@@ -88,7 +146,6 @@ public class MainActivity extends AppCompatActivity {
 
                         if (allGranted) {
                             Toast.makeText(MainActivity.this, "All permissions granted. Lunar Tag is ready.", Toast.LENGTH_SHORT).show();
-                            // This is the action to take after permissions are successfully granted.
                             onPermissionsGranted();
                         } else {
                             Toast.makeText(MainActivity.this, "Some permissions were denied. Core features may not work.", Toast.LENGTH_LONG).show();
@@ -100,8 +157,34 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Checks which of the required permissions are not yet granted and requests them.
+     * Optional: Helper to visually highlight the active tab.
+     * Resets all icons to default color, then tints the active one.
      */
+    private void updateIconVisuals(View activeView) {
+        // Get colors
+        int activeColor = getAttributeColor(com.google.android.material.R.attr.colorPrimary);
+        int inactiveColor = getAttributeColor(com.google.android.material.R.attr.colorOnSurface);
+
+        // Reset all
+        binding.navDashboard.setColorFilter(inactiveColor);
+        binding.navCamera.setColorFilter(inactiveColor);
+        binding.navGallery.setColorFilter(inactiveColor);
+        binding.navRobot.setColorFilter(inactiveColor);
+        binding.navApps.setColorFilter(inactiveColor);
+        binding.navSettings.setColorFilter(inactiveColor);
+
+        // Set Active
+        if (activeView instanceof android.widget.ImageView) {
+            ((android.widget.ImageView) activeView).setColorFilter(activeColor);
+        }
+    }
+
+    private int getAttributeColor(int attrId) {
+        android.util.TypedValue typedValue = new android.util.TypedValue();
+        getTheme().resolveAttribute(attrId, typedValue, true);
+        return typedValue.data;
+    }
+
     private void checkAndRequestPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
         boolean allPermissionsAlreadyGranted = true;
@@ -116,19 +199,12 @@ public class MainActivity extends AppCompatActivity {
             permissionLauncher.launch(permissionsToRequest.toArray(new String[0]));
         }
 
-        // If all permissions were already granted from a previous launch,
-        // perform the success action immediately.
         if (allPermissionsAlreadyGranted) {
             onPermissionsGranted();
         }
     }
 
-    /**
-     * Helper method to be called once all necessary permissions have been granted.
-     */
     private void onPermissionsGranted() {
-        // This is a placeholder for any logic that needs to run after permissions are confirmed.
-        // For example, initializing location services or other components.
-        // This structure matches your reference file exactly.
+        // Permissions granted logic
     }
 }
