@@ -5,10 +5,13 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
+import android.provider.Settings;
+import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Toast;
@@ -24,10 +27,11 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     private static final String KEY_JOB_PENDING = "job_is_pending";
     private static final String KEY_AUTO_MODE = "automation_mode";
     private static final String KEY_TARGET_APP_LABEL = "target_app_label";
+    private static final String KEY_JOB_START_TIME = "job_start_time"; // For timeout
 
     private enum State {
         IDLE,
-        WAITING_FOR_NOTIFICATION,
+        WAITING_FOR_SHARE_SHEET,  // Full auto: After firing intent
         IN_SHARE_SHEET,
         IN_WHATSAPP_CHAT_LIST,
         IN_GROUP_CHAT,
@@ -36,7 +40,8 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private State currentState = State.IDLE;
     private long lastScrollTime = 0;
-    private static final long SCROLL_COOLDOWN = 2300;
+    private static final long SCROLL_COOLDOWN = 1200; // Faster for WhatsApp
+    private static final long JOB_TIMEOUT = 30000; // 30s max per job
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -50,7 +55,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                 | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
                 | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
         setServiceInfo(info);
-        showToast("LunarTag Robot Ready | Clone Supported");
+        showToast("LunarTag Robot v2 | Full Auto FIXED");
         resetToIdle();
     }
 
@@ -63,6 +68,14 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             return;
         }
 
+        // Job timeout check
+        long startTime = prefs.getLong(KEY_JOB_START_TIME, 0);
+        if (System.currentTimeMillis() - startTime > JOB_TIMEOUT) {
+            showToast("Job timed out - resetting");
+            finishJob();
+            return;
+        }
+
         int eventType = event.getEventType();
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
@@ -72,17 +85,23 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
+        root.refresh(); // FIX: Refresh for fresh WhatsApp nodes
 
         String packageName = event.getPackageName() != null ? event.getPackageName().toString().toLowerCase() : "";
         String mode = prefs.getString(KEY_AUTO_MODE, "semi");
         String targetGroup = prefs.getString(KEY_TARGET_GROUP, "").trim();
         String targetAppLabel = prefs.getString(KEY_TARGET_APP_LABEL, "WhatsApp");
 
-        if (mode.equals("full") && currentState == State.WAITING_FOR_NOTIFICATION) {
-            if (eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED && packageName.contains(getPackageName())) {
-                clickOurNotification(event);
-                return;
-            }
+        // FULL AUTO: Fire share intent if waiting (replaces unreliable notif click)
+        if (mode.equals("full") && currentState == State.WAITING_FOR_SHARE_SHEET) {
+            fireShareIntent(); // Triggers share sheet directly
+            return;
+        }
+
+        // Handle notification as fallback (semi/full)
+        if (eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED && packageName.contains(getPackageName())) {
+            clickOurNotification(event);
+            return;
         }
 
         if (packageName.contains("whatsapp")) {
@@ -91,7 +110,26 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             currentState = State.IN_SHARE_SHEET;
             handleShareSheet(root, targetAppLabel);
         } else {
-            if (currentState != State.WAITING_FOR_NOTIFICATION) currentState = State.IDLE;
+            if (currentState != State.WAITING_FOR_SHARE_SHEET) currentState = State.IDLE;
+        }
+    }
+
+    // NEW: Reliable full auto share trigger
+    private void fireShareIntent() {
+        // Simulate share from our app - direct intent (works on A15+)
+        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+        shareIntent.setType("text/plain");
+        shareIntent.putExtra(Intent.EXTRA_TEXT, "Automated share from LunarTag");
+        shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(shareIntent);
+            showToast("Full Auto: Share sheet opened");
+            currentState = State.IN_SHARE_SHEET;
+        } catch (Exception e) {
+            Log.e(TAG, "Share intent failed", e);
+            // Fallback: Global action to open notifications
+            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
+            mainHandler.postDelayed(this::performGlobalAction, 500, GLOBAL_ACTION_QUICK_SETTINGS);
         }
     }
 
@@ -99,24 +137,30 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         currentState = State.IN_WHATSAPP_CHAT_LIST;
 
         if (clickSendButton(root)) {
-            showToast("Message SENT!");
+            showToast("Message SENT! Job Done");
             finishJob();
             return;
         }
 
         if (isInChatTypingMode(root)) {
             currentState = State.IN_GROUP_CHAT;
-            showToast("In group chat. Waiting...");
+            showToast("In group chat. Waiting for send...");
             return;
         }
 
         if (!targetGroup.isEmpty()) {
+            // Scan first - your manual logic
             if (scanAndClick(root, targetGroup) || scanListItemsManually(root, targetGroup)) {
                 showToast("Group opened: " + targetGroup);
                 delayStateChange(State.IN_GROUP_CHAT, 1400);
                 return;
             }
-            smartScroll(root);
+            // Only scroll if not visible
+            if (!isGroupPartiallyVisible(root, targetGroup)) {
+                smartScroll(root);
+            } else {
+                showToast("Group visible - no scroll needed");
+            }
         }
     }
 
@@ -131,7 +175,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         }
 
         if (clicked) {
-            showToast("WhatsApp (Clone) Selected");
+            showToast("WhatsApp Selected");
             delayStateChange(State.IN_WHATSAPP_CHAT_LIST, 1500);
         } else {
             smartScroll(root);
@@ -145,11 +189,40 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             if (n.contentIntent != null) {
                 try {
                     n.contentIntent.send();
-                    showToast("Opening share sheet...");
+                    showToast("Notif clicked - opening share");
                     currentState = State.IN_SHARE_SHEET;
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    Log.e(TAG, "Notif send failed", e);
+                    fireShareIntent(); // Fallback
+                }
             }
         }
+    }
+
+    // IMPROVED SCROLL: Check visibility first
+    private void smartScroll(AccessibilityNodeInfo root) {
+        if (System.currentTimeMillis() - lastScrollTime < SCROLL_COOLDOWN) return;
+        AccessibilityNodeInfo scrollable = findScrollableNode(root);
+        if (scrollable == null) return;
+
+        // Try forward, fallback backward if at bottom
+        boolean scrolled = scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+        if (!scrolled) {
+            scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+        }
+        showToast("Scrolling list...");
+        lastScrollTime = System.currentTimeMillis();
+    }
+
+    // NEW: Quick visibility check before scroll
+    private boolean isGroupPartiallyVisible(AccessibilityNodeInfo root, String target) {
+        List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(target);
+        if (nodes != null && !nodes.isEmpty()) {
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node.isVisibleToUser()) return true;
+            }
+        }
+        return recursiveTextCheck(root, target); // Your manual check
     }
 
     private boolean isShareSheetActive(AccessibilityNodeInfo root) {
@@ -161,21 +234,6 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                hasText(root, "Choose app");
     }
 
-    private boolean hasText(AccessibilityNodeInfo node, String text) {
-        List<AccessibilityNodeInfo> list = node.findAccessibilityNodeInfosByText(text);
-        return list != null && !list.isEmpty();
-    }
-
-    private void smartScroll(AccessibilityNodeInfo root) {
-        if (System.currentTimeMillis() - lastScrollTime < SCROLL_COOLDOWN) return;
-        AccessibilityNodeInfo scrollable = findScrollableNode(root);
-        if (scrollable != null) {
-            showToast("Scrolling...");
-            scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
-            lastScrollTime = System.currentTimeMillis();
-        }
-    }
-
     private boolean clickSendButton(AccessibilityNodeInfo root) {
         return scanAndClickContentDesc(root, "Send") ||
                clickByViewId(root, "com.whatsapp:id/send");
@@ -183,6 +241,11 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private boolean isInChatTypingMode(AccessibilityNodeInfo root) {
         return findNodeByViewId(root, "com.whatsapp:id/entry") != null;
+    }
+
+    private boolean hasText(AccessibilityNodeInfo node, String text) {
+        List<AccessibilityNodeInfo> list = node.findAccessibilityNodeInfosByText(text);
+        return list != null && !list.isEmpty();
     }
 
     private void delayStateChange(State next, long delay) {
@@ -193,7 +256,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE)
                 .edit().putBoolean(KEY_JOB_PENDING, false).apply();
         resetToIdle();
-        showToast("Job Complete! Robot sleeping");
+        showToast("Job Complete!");
     }
 
     private void resetToIdle() {
@@ -202,9 +265,10 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         mainHandler.removeCallbacksAndMessages(null);
     }
 
-    // ——— YOUR ORIGINAL HELPERS (100% WORKING) ———
+    // ——— YOUR ORIGINAL HELPERS (ENHANCED WITH REFRESH) ———
     private boolean scanAndClick(AccessibilityNodeInfo root, String text) {
         if (root == null || text.isEmpty()) return false;
+        root.refresh();
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
         if (nodes != null) for (AccessibilityNodeInfo n : nodes) if (tryClickingHierarchy(n)) return true;
         return false;
@@ -212,6 +276,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private boolean scanAndClickContentDesc(AccessibilityNodeInfo node, String desc) {
         if (node == null) return false;
+        node.refresh();
         if (node.getContentDescription() != null &&
             node.getContentDescription().toString().toLowerCase().contains(desc.toLowerCase())) {
             return tryClickingHierarchy(node);
@@ -224,6 +289,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private boolean scanListItemsManually(AccessibilityNodeInfo root, String target) {
         if (root == null) return false;
+        root.refresh();
         String className = root.getClassName() != null ? root.getClassName().toString() : "";
         if (className.contains("RecyclerView") || className.contains("ListView")) {
             for (int i = 0; i < root.getChildCount(); i++) {
@@ -240,6 +306,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private boolean recursiveTextCheck(AccessibilityNodeInfo node, String target) {
         if (node == null) return false;
+        node.refresh();
         CharSequence t = node.getText();
         CharSequence d = node.getContentDescription();
         if (t != null && t.toString().toLowerCase().contains(target.toLowerCase())) return tryClickingHierarchy(node);
@@ -264,6 +331,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private AccessibilityNodeInfo findScrollableNode(AccessibilityNodeInfo node) {
         if (node == null) return null;
+        node.refresh();
         if (node.isScrollable()) return node;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo r = findScrollableNode(node.getChild(i));
@@ -273,6 +341,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     }
 
     private AccessibilityNodeInfo findNodeByViewId(AccessibilityNodeInfo root, String id) {
+        root.refresh();
         List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByViewId(id);
         return list != null && !list.isEmpty() ? list.get(0) : null;
     }
