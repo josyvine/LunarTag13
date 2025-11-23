@@ -2,13 +2,11 @@ package com.lunartag.app.services;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.app.Notification;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Parcelable;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Toast;
@@ -16,13 +14,13 @@ import android.widget.Toast;
 import java.util.List;
 
 /**
- * LUNARTAG ROBOT - FINAL "HARD RESET" EDITION
+ * LUNARTAG ROBOT - "SAFE & SECURE" EDITION
  * 
- * FIXES:
- * 1. "One Time Only" -> Fixed by resetting state every time App Package changes.
- * 2. "Silent Log" -> Fixed by using Application Context and Debug Toasts.
- * 3. "Full Auto" -> Fixed by using raw Notification Intents.
- * 4. FIXED: No clicks - Window state trigger for semi, contentDesc for groups.
+ * FINAL FIXES:
+ * 1. PERSONAL SAFETY LOCK: Robot ignores WhatsApp if opened from Home Screen (Launcher).
+ * 2. SHARE SHEET SCROLL: Fixes hidden icons by scrolling and waiting.
+ * 3. CLONE TARGETING: Searches for "Clone" to avoid ambiguity.
+ * 4. TERRITORY LOCK: Instant freeze if user switches to unrelated apps.
  */
 public class LunarTagAccessibilityService extends AccessibilityService {
 
@@ -30,21 +28,27 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     private static final String KEY_AUTO_MODE = "automation_mode"; 
     private static final String KEY_TARGET_GROUP = "target_group_name";
 
-    // States
+    // STATES
     private static final int STATE_IDLE = 0;
-    private static final int STATE_WAITING_FOR_SHARE_SHEET = 1;
+    private static final int STATE_SEARCHING_SHARE_SHEET = 1;
     private static final int STATE_SEARCHING_GROUP = 2;
     private static final int STATE_CLICKING_SEND = 3;
 
     private int currentState = STATE_IDLE;
-    private String lastPackageName = "";
     private boolean isScrolling = false;
+    
+    // SAFETY TRACKING
+    private String lastExternalPackage = ""; // Tracks where we came from (Launcher vs App)
+
+    // TARGET KEYWORDS
+    private static final String KEYWORD_CLONE = "Clone"; 
+    private static final String KEYWORD_SEND_HEADER = "Send to"; 
+    private static final String KEYWORD_RECENT = "Recent chats";
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
 
-        // Configure to listen to EVERYTHING
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
         info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK; 
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
@@ -55,124 +59,127 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         setServiceInfo(info);
 
         currentState = STATE_IDLE;
+        lastExternalPackage = "";
 
-        // 1. DEBUG TOAST: PROOF OF LIFE
-        // If you do not see this Toast when the switch ON, the service is broken.
         new Handler(Looper.getMainLooper()).post(() -> 
-            Toast.makeText(getApplicationContext(), "🤖 ROBOT CONNECTED & LISTENING", Toast.LENGTH_LONG).show());
+            Toast.makeText(getApplicationContext(), "🛡️ ROBOT SAFE MODE: ACTIVE", Toast.LENGTH_LONG).show());
 
-        performBroadcastLog("🔴 SYSTEM READY. Mode: Checking...");
+        performBroadcastLog("🔴 SYSTEM READY. Waiting for job...");
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event == null || event.getPackageName() == null) return;
+
+        String pkgName = event.getPackageName().toString().toLowerCase();
+        
+        // IGNORE SYSTEM NOISE (Keyboard, System UI, etc.) so we don't lose track of the real previous app
+        if (pkgName.contains("inputmethod") || pkgName.contains("systemui")) return;
+
         SharedPreferences prefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
         String mode = prefs.getString(KEY_AUTO_MODE, "semi");
 
-        // 1. TRACK PACKAGE CHANGES (The "Everytime" Fix)
-        String pkgName = "unknown";
-        if (event.getPackageName() != null) {
-            pkgName = event.getPackageName().toString().toLowerCase();
+        boolean isWhatsApp = pkgName.contains("whatsapp");
+        boolean isSystemShare = pkgName.equals("android") || pkgName.contains("ui") || pkgName.contains("resolver");
+        boolean isMyApp = pkgName.contains("lunartag");
+
+        // ====================================================================
+        // 1. SOURCE TRACKING (THE PERSONAL SAFETY FIX)
+        // ====================================================================
+        // We track the last app used BEFORE WhatsApp or Share Sheet opened.
+        if (!isWhatsApp && !isSystemShare) {
+            lastExternalPackage = pkgName;
+            // If user goes to Home Screen (Launcher), robot marks this as "Unsafe/Personal"
         }
 
-        // IF APP CHANGED, HARD RESET THE BRAIN
-        if (!pkgName.equals(lastPackageName)) {
-            if (!lastPackageName.isEmpty()) {
-                performBroadcastLog("🔄 App Switch Detected: " + pkgName);
-                // Don't reset if we are just transitioning to share sheet or system resolver
-                if (!pkgName.equals("android") && !pkgName.contains("launcher") && !pkgName.contains("resolver")) {
-                     currentState = STATE_IDLE; 
-                }
+        // ====================================================================
+        // 2. SECURITY GATEKEEPER (TERRITORY LOCK)
+        // ====================================================================
+        // If not in WhatsApp, Share Sheet, or Our App -> FREEZE.
+        if (!isWhatsApp && !isSystemShare && !isMyApp) {
+            if (currentState != STATE_IDLE) {
+                performBroadcastLog("🛑 Personal Activity Detected (" + pkgName + "). Robot Sleeping.");
+                currentState = STATE_IDLE;
             }
-            lastPackageName = pkgName;
-        }
-
-        // FIXED: Trigger semi-auto on window state change (share screen in WhatsApp)
-        if (mode.equals("semi") && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgName.contains("whatsapp") && currentState == STATE_IDLE) {
-            performBroadcastLog("⚡ Semi-Auto: Window state change - Starting Search...");
-            currentState = STATE_SEARCHING_GROUP;
+            return; 
         }
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
 
         // ====================================================================
-        // FULL AUTOMATIC: CLONE SELECTOR (DIRECT LAUNCH HANDLING)
+        // 3. FULL AUTOMATIC: SYSTEM SHARE SHEET
         // ====================================================================
-        if (mode.equals("full")) {
+        if (mode.equals("full") && isSystemShare) {
+            
+            // Only activate if we came from our App (or background service)
+            // If user clicked "Share" from Gallery, lastExternalPackage would be "gallery" -> We Ignore.
+            if (!lastExternalPackage.contains("lunartag") && currentState == STATE_IDLE) {
+                 return; // Ignore shares from other apps
+            }
 
-            // NOTE: The AlarmReceiver has already fired the Direct Intent.
-            // We are now looking at the System Dialog showing "Original vs Clone".
+            if (currentState == STATE_IDLE) {
+                currentState = STATE_SEARCHING_SHARE_SHEET;
+            }
 
-            if (!pkgName.contains("whatsapp") && root != null) {
-                 // Search for "WhatsApp" text in the dialog
-                 List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("WhatsApp");
+            if (currentState == STATE_SEARCHING_SHARE_SHEET) {
+                // A. LOOK FOR "CLONE"
+                if (scanAndClick(root, KEYWORD_CLONE)) {
+                    performBroadcastLog("✅ Full Auto: Clicked 'WhatsApp(Clone)'");
+                    currentState = STATE_SEARCHING_GROUP; 
+                    return;
+                }
 
-                 if (nodes != null && !nodes.isEmpty()) {
-                     // CLONE DETECTION LOGIC:
-                     // If 2 items exist, Item #1 (Index 1) is usually the Clone.
-                     if (nodes.size() >= 2) {
-                         performBroadcastLog("✅ Full Auto: 2 WhatsApps Found. Clicking Index 1 (Clone)...");
-                         performClick(nodes.get(1)); // Click the second one
-                         currentState = STATE_SEARCHING_GROUP;
-                         return;
-                     } 
-                     // If only 1 exists, click it.
-                     else if (nodes.size() == 1) {
-                         performBroadcastLog("✅ Full Auto: 1 WhatsApp Found. Clicking Index 0...");
-                         performClick(nodes.get(0));
-                         currentState = STATE_SEARCHING_GROUP;
-                         return;
-                     }
-                 }
+                // B. VISUAL SCROLL & RETRY (Fix for Hidden Icons)
+                performBroadcastLog("👀 Icon hidden. Scrolling Share List...");
+                performScroll(root);
             }
         }
 
         // ====================================================================
-        // SEMI-AUTOMATIC & FULL: WHATSAPP HANDLING (UNTOUCHED)
+        // 4. WHATSAPP LOGIC (SAFEGUARDED)
         // ====================================================================
-        if (pkgName.contains("whatsapp")) {
+        if (isWhatsApp) {
 
-            // SEMI-AUTO WAKE UP TRIGGER
-            // If we are in Semi mode, and just entered WhatsApp, Force Search Mode.
-            if (mode.equals("semi")) {
-                // We check if we are seeing the "Send to..." list to confirm we are sharing
-                if (currentState == STATE_IDLE) {
-                    performBroadcastLog("⚡ Semi-Auto: WhatsApp Detected. Starting Search...");
+            // SAFETY CHECK: DID WE COME FROM THE APP OR SHARE SHEET?
+            // If last app was "Launcher" (Home Screen), we DO NOT run.
+            // We only run if previous app was "lunartag" or "android" (Share Sheet).
+            boolean cameFromAuthorizedSource = lastExternalPackage.contains("lunartag") || lastExternalPackage.equals("android");
+            
+            // If we are IDLE, we check authorization before starting
+            if (currentState == STATE_IDLE && !cameFromAuthorizedSource) {
+                // This is Personal Use. Do nothing.
+                return;
+            }
+
+            // A. TRIGGER: TEXT DETECTION
+            if (currentState == STATE_IDLE || currentState == STATE_SEARCHING_SHARE_SHEET) {
+                if (hasTextOnScreen(root, KEYWORD_SEND_HEADER) || hasTextOnScreen(root, KEYWORD_RECENT)) {
+                    performBroadcastLog("⚡ Authorized Job Detected. Starting Search...");
                     currentState = STATE_SEARCHING_GROUP;
                 }
             }
 
-            // EXECUTE SEARCH
+            // B. FIND GROUP
             if (currentState == STATE_SEARCHING_GROUP) {
-                if (root == null) return;
                 String targetGroup = prefs.getString(KEY_TARGET_GROUP, "");
+                if (targetGroup.isEmpty()) return;
 
-                if (targetGroup.isEmpty()) {
-                    performBroadcastLog("⚠️ Error: No Group Name Saved!");
-                    return;
-                }
-
-                // Try finding the group
                 if (scanAndClick(root, targetGroup)) {
                     performBroadcastLog("✅ Found Group: " + targetGroup);
-                    currentState = STATE_CLICKING_SEND; // Move to next step
+                    currentState = STATE_CLICKING_SEND;
                     return;
                 }
 
-                // Scroll and retry
-                performBroadcastLog("🔎 Searching for group...");
+                performBroadcastLog("🔎 Searching list for group...");
                 performScroll(root);
             }
 
-            // EXECUTE SEND
+            // C. CLICK SEND
             else if (currentState == STATE_CLICKING_SEND) {
-                if (root == null) return;
-
                 boolean sent = false;
-                // 1. Check Content Description
                 if (scanAndClickContentDesc(root, "Send")) sent = true;
 
-                // 2. Check View ID
                 if (!sent) {
                     List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send");
                     if (!nodes.isEmpty()) {
@@ -182,8 +189,10 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                 }
 
                 if (sent) {
-                    performBroadcastLog("🚀 SENT! Job Complete.");
-                    currentState = STATE_IDLE; // Reset for the next photo
+                    performBroadcastLog("🚀 SENT! Job Done. Sleeping.");
+                    currentState = STATE_IDLE; 
+                    // Reset safety to prevent looping
+                    lastExternalPackage = "finished"; 
                 }
             }
         }
@@ -195,40 +204,39 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private void performBroadcastLog(String msg) {
         try {
-            // Log to System Out just in case Broadcast fails
             System.out.println("LUNARTAG_LOG: " + msg);
-
             Intent intent = new Intent("com.lunartag.ACTION_LOG_UPDATE");
             intent.putExtra("log_msg", msg);
             intent.setPackage(getPackageName());
-            // Use Application Context to ensure stability
             getApplicationContext().sendBroadcast(intent);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    private boolean hasTextOnScreen(AccessibilityNodeInfo root, String text) {
+        if (root == null) return false;
+        List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
+        return nodes != null && !nodes.isEmpty();
+    }
+
     private boolean scanAndClick(AccessibilityNodeInfo root, String text) {
         if (root == null || text == null) return false;
-        // Case insensitive search
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
         if (nodes != null && !nodes.isEmpty()) {
             for (AccessibilityNodeInfo node : nodes) {
                 if (performClick(node)) return true;
             }
         }
-        // Fallback for partial matches manually
         return recursiveSearch(root, text);
     }
 
     private boolean recursiveSearch(AccessibilityNodeInfo node, String text) {
         if (node == null) return false;
-        // FIXED: Check BOTH text and contentDescription for 2025 WhatsApp groups
         if (node.getText() != null && node.getText().toString().toLowerCase().contains(text.toLowerCase())) {
             return performClick(node);
         }
         if (node.getContentDescription() != null && node.getContentDescription().toString().toLowerCase().contains(text.toLowerCase())) {
-            performBroadcastLog("✅ DEBUG: Group found in contentDescription → Clicking");
             return performClick(node);
         }
         for (int i = 0; i < node.getChildCount(); i++) {
@@ -250,6 +258,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     }
 
     private boolean performClick(AccessibilityNodeInfo node) {
+        if (node == null) return false;
         AccessibilityNodeInfo target = node;
         int attempts = 0;
         while (target != null && attempts < 6) {
@@ -269,6 +278,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (scrollable != null) {
             isScrolling = true;
             scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+            // VISUAL WAIT: Essential for seeing the scroll and loading hidden items
             new Handler(Looper.getMainLooper()).postDelayed(() -> isScrolling = false, 600);
         }
     }
@@ -285,6 +295,6 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        performBroadcastLog("⚠️ Interrupted");
+        currentState = STATE_IDLE;
     }
 }
