@@ -34,7 +34,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        
+
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
         info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK; 
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
@@ -43,7 +43,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                      AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS |
                      AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
         setServiceInfo(info);
-        
+
         // Force Start Overlay
         try {
             Intent intent = new Intent(this, OverlayService.class);
@@ -66,10 +66,10 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         // Note: root can be null in some events, but we might need event.getSource() for learning
-        
+
         SharedPreferences prefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
         String mode = prefs.getString(KEY_AUTO_MODE, "semi");
-        
+
         // READ SETTINGS
         String targetAppName = prefs.getString(KEY_TARGET_APP_LABEL, "WhatsApp(Clone)");
         String targetGroup = prefs.getString(KEY_TARGET_GROUP, "");
@@ -78,20 +78,28 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // 0. TRAINING MODE (TEACH THE ROBOT)
         // ====================================================================
         if (targetAppName.equals("SETUP")) {
+
+            // FIX: CONTEXT CHECK
+            // If we don't see "Share" or "Cancel", we are likely still in Settings or Camera.
+            // Wait until the actual Share Sheet appears before recording clicks.
+            if (root != null && !hasText(root, "Share") && !hasText(root, "Cancel")) {
+                return; // Ignore clicks until Share Sheet is detected
+            }
+
             if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) {
                 AccessibilityNodeInfo clickedNode = event.getSource();
                 if (clickedNode != null) {
                     // Extract text from the clicked item or its children
                     String signature = extractTextFromNode(clickedNode);
-                    
+
                     if (signature != null && !signature.isEmpty() && !signature.equalsIgnoreCase("cancel")) {
                         // SAVE THE LEARNED SIGNATURE
                         prefs.edit().putString(KEY_TARGET_APP_LABEL, signature).apply();
-                        
+
                         // VISUAL CONFIRMATION
                         new Handler(Looper.getMainLooper()).post(() -> 
                             Toast.makeText(getApplicationContext(), "✅ Robot Learned: " + signature, Toast.LENGTH_LONG).show());
-                        
+
                         performBroadcastLog("✅ TRAINING COMPLETE. Target set to: " + signature);
                     }
                 }
@@ -104,12 +112,12 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // ====================================================================
 
         if (root == null) return;
-        
+
         // IF WAITING FOR RED LIGHT, FREEZE
         if (isClickingPending) return;
 
         // 2. SMART CONTEXT DETECTION
-        
+
         // A. Are we in WhatsApp? (Look for "Send to")
         boolean isWhatsAppUI = hasText(root, "Send to") || hasText(root, "Recent chats");
 
@@ -129,14 +137,14 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // 3. SHARE SHEET LOGIC (Full Auto)
         // ====================================================================
         if (mode.equals("full") && !isWhatsAppUI) {
-            
+
             // If we see the Target App Name (Learned or Typed), Click it!
             if (findMarkerAndClick(root, targetAppName, true)) {
                 performBroadcastLog("✅ Share Sheet: Found '" + targetAppName + "'. RED LIGHT + CLICK.");
                 currentState = STATE_SEARCHING_GROUP;
                 return;
             }
-            
+
             // If we see "Cancel" but not the app, Scroll.
             if (hasText(root, "Cancel") && !isScrolling) {
                 performScroll(root);
@@ -147,7 +155,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // 4. WHATSAPP LOGIC (Semi & Full) - UNTOUCHED AS REQUESTED
         // ====================================================================
         if (isWhatsAppUI) {
-            
+
             // Set State if just arrived
             if (currentState == STATE_IDLE || currentState == STATE_SEARCHING_SHARE_SHEET) {
                 performBroadcastLog("⚡ WhatsApp Detected. Searching Group...");
@@ -170,7 +178,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             // CLICK SEND
             else if (currentState == STATE_CLICKING_SEND) {
                 boolean found = false;
-                
+
                 if (findMarkerAndClickID(root, "com.whatsapp:id/conversation_send_arrow")) found = true;
                 if (!found && findMarkerAndClickID(root, "com.whatsapp:id/send")) found = true;
                 if (!found && findMarkerAndClick(root, "Send", false)) found = true;
@@ -192,7 +200,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (node == null) return null;
         if (node.getText() != null && !node.getText().toString().isEmpty()) return node.getText().toString();
         if (node.getContentDescription() != null && !node.getContentDescription().toString().isEmpty()) return node.getContentDescription().toString();
-        
+
         for (int i = 0; i < node.getChildCount(); i++) {
             String childText = extractTextFromNode(node.getChild(i));
             if (childText != null) return childText;
@@ -204,10 +212,10 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (root == null || text == null) return false;
         // Fuzzy Match: Remove spaces/newlines/brackets to match recorded signatures
         String cleanTarget = cleanString(text);
-        
+
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(cleanTarget);
         if (nodes != null && !nodes.isEmpty()) return true;
-        
+
         return recursiveCheckText(root, cleanTarget);
     }
 
@@ -215,7 +223,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (node == null) return false;
         if (node.getText() != null && cleanString(node.getText().toString()).contains(text)) return true;
         if (node.getContentDescription() != null && cleanString(node.getContentDescription().toString()).contains(text)) return true;
-        
+
         for (int i = 0; i < node.getChildCount(); i++) {
             if (recursiveCheckText(node.getChild(i), text)) return true;
         }
@@ -224,7 +232,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private boolean findMarkerAndClick(AccessibilityNodeInfo root, String text, boolean isTextSearch) {
         if (root == null || text == null || text.isEmpty()) return false;
-        
+
         // Direct Search
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
         if (nodes != null && !nodes.isEmpty()) {
@@ -252,12 +260,12 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     private boolean recursiveSearchAndClick(AccessibilityNodeInfo node, String text) {
         if (node == null) return false;
         boolean match = false;
-        
+
         String cleanTarget = cleanString(text);
-        
+
         if (node.getText() != null && cleanString(node.getText().toString()).contains(cleanTarget)) match = true;
         if (!match && node.getContentDescription() != null && cleanString(node.getContentDescription().toString()).contains(cleanTarget)) match = true;
-        
+
         if (match) {
             AccessibilityNodeInfo clickable = node;
             while (clickable != null && !clickable.isClickable()) {
