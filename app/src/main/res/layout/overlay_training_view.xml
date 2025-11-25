@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="8dp"
+    android:background="@android:drawable/dialog_holo_light_frame">
+
+    <!-- The Red Crosshair Target -->
+    <ImageView
+        android:id="@+id/image_target_crosshair"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:src="@android:drawable/ic_menu_mylocation"
+        android:tint="#FF0000"
+        android:scaleType="centerInside"
+        android:contentDescription="Target Crosshair" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="DRAG TO ICON"
+        android:textColor="#000000"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:layout_marginTop="4dp" />
+
+    <!-- The Save Button -->
+    <Button
+        android:id="@+id/btn_save_position"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="SAVE POS"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginTop="8dp"
+        android:minHeight="48dp" />
+
+</LinearLayout>
