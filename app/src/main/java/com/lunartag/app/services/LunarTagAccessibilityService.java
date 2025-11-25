@@ -129,14 +129,8 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // ====================================================================
         if (pkgName.contains("whatsapp")) {
 
-            // VISUAL STATUS (Shows once every 3 seconds to confirm activity)
-            if (System.currentTimeMillis() - lastToastTime > 3000) {
-                new Handler(Looper.getMainLooper()).post(() -> 
-                    Toast.makeText(getApplicationContext(), "🤖 Robot Searching: " + targetGroup, Toast.LENGTH_SHORT).show());
-                lastToastTime = System.currentTimeMillis();
-            }
-
             // PRIORITY 1: CHECK FOR SEND BUTTON (Are we in the chat?)
+            // We do this BEFORE checking the token status, so we can finish an active job.
             boolean sendFound = false;
             if (findMarkerAndClickID(root, "com.whatsapp:id/conversation_send_arrow")) sendFound = true;
             if (!sendFound && findMarkerAndClickID(root, "com.whatsapp:id/send")) sendFound = true;
@@ -144,15 +138,27 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             if (sendFound) {
                 performBroadcastLog("🚀 SEND BUTTON FOUND. CLICKING...");
                 // SUCCESS! Reset everything.
+                // This stops the robot from searching in the next loop.
                 prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
+                
                 new Handler(Looper.getMainLooper()).postDelayed(() -> 
                     Toast.makeText(getApplicationContext(), "🚀 MESSAGE SENT", Toast.LENGTH_SHORT).show(), 500);
                 return; // Stop here, job done for this cycle.
             }
 
+            // VISUAL STATUS (Shows only if job is pending)
+            if (prefs.getBoolean(KEY_JOB_PENDING, false)) {
+                if (System.currentTimeMillis() - lastToastTime > 3000) {
+                    new Handler(Looper.getMainLooper()).post(() -> 
+                        Toast.makeText(getApplicationContext(), "🤖 Robot Searching: " + targetGroup, Toast.LENGTH_SHORT).show());
+                    lastToastTime = System.currentTimeMillis();
+                }
+            }
+
             // PRIORITY 2: CHECK FOR GROUP NAME (Are we in the list?)
-            // Only look for group if we didn't find the send button.
-            if (!targetGroup.isEmpty()) {
+            // LOGIC FIX: Only look for group if JOB_PENDING is true.
+            // If we just sent a message (Priority 1), JOB_PENDING is false, so this block is skipped.
+            if (prefs.getBoolean(KEY_JOB_PENDING, false) && !targetGroup.isEmpty()) {
                 if (findMarkerAndClick(root, targetGroup, true)) {
                     performBroadcastLog("✅ GROUP FOUND. CLICKING...");
                     return; // Clicked group, wait for screen change.
@@ -308,7 +314,6 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        // This line was causing the error because variables were undefined. Fixed now.
         currentState = STATE_IDLE;
         if (OverlayService.getInstance() != null) OverlayService.getInstance().hideMarker();
     }
