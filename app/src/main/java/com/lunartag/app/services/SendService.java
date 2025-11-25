@@ -39,7 +39,10 @@ public class SendService extends Service {
     // Bridge Prefs (For Accessibility)
     private static final String PREFS_ACCESSIBILITY = "LunarTagAccessPrefs";
     private static final String KEY_TARGET_GROUP = "target_group_name";
-    private static final String KEY_JOB_PENDING = "job_is_pending";
+    
+    // TOKEN SYSTEM KEYS
+    private static final String KEY_JOB_PENDING = "job_is_pending"; // The Permission Ticket
+    private static final String KEY_FORCE_RESET = "force_reset_logic"; // The Brain Wipe
 
     @Override
     public void onCreate() {
@@ -61,15 +64,14 @@ public class SendService extends Service {
             return START_NOT_STICKY;
         }
 
-        // --- LOGIC FIX: Handle both Real Files and Content URIs ---
         Uri imageUri = null;
 
         try {
             if (filePath.startsWith("content://")) {
-                // It's a Custom Folder URI (SAF). We trust it exists.
+                // It's a Custom Folder URI (SAF)
                 imageUri = Uri.parse(filePath);
             } else {
-                // It's a standard internal file. Check existence.
+                // It's a standard internal file
                 File imageFile = new File(filePath);
                 if (!imageFile.exists()) {
                     Log.e(TAG, "Image file missing: " + filePath);
@@ -77,7 +79,6 @@ public class SendService extends Service {
                     stopSelf();
                     return START_NOT_STICKY;
                 }
-                // Convert File to secure URI
                 imageUri = FileProvider.getUriForFile(
                         this,
                         getApplicationContext().getPackageName() + ".fileprovider",
@@ -91,6 +92,7 @@ public class SendService extends Service {
         }
 
         // --- STEP 1: Arm Accessibility (The Bridge) ---
+        // This gives the Robot the Token and the Reset Command
         armAccessibilityService();
 
         // --- STEP 2: Post Notification ---
@@ -152,7 +154,8 @@ public class SendService extends Service {
             SharedPreferences accessPrefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
             accessPrefs.edit()
                     .putString(KEY_TARGET_GROUP, groupName)
-                    .putBoolean(KEY_JOB_PENDING, true)
+                    .putBoolean(KEY_JOB_PENDING, true)  // GIVE PERMISSION TICKET
+                    .putBoolean(KEY_FORCE_RESET, true)  // COMMAND BRAIN WIPE
                     .apply();
             Log.d(TAG, "Bridge Armed for: " + groupName);
         } else {
@@ -183,4 +186,3 @@ public class SendService extends Service {
         return null;
     }
 }
-
