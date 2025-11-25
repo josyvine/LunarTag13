@@ -92,7 +92,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (isClickingPending) return;
 
         // ====================================================================
-        // 3. SHARE SHEET LOGIC (Coordinate Click - One Shot)
+        // 3. SHARE SHEET LOGIC (Coordinate Click)
         // ====================================================================
         boolean isShareSheet = hasText(root, "Cancel") || pkgName.equals("android") || pkgName.contains("chooser");
 
@@ -114,9 +114,10 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     // Delay 500ms for animation
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         dispatchGesture(createClickGesture(x, y), null, null);
-                        // DISABLE TOKEN IMMEDIATELY (One Shot)
-                        prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
                         isClickingPending = false; 
+                        
+                        // FIX: WE DO NOT TURN OFF 'KEY_JOB_PENDING' HERE.
+                        // We leave it TRUE so the robot stays active when WhatsApp opens.
                     }, 500);
                 }
             }
@@ -128,18 +129,29 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // ====================================================================
         if (pkgName.contains("whatsapp")) {
 
-            // PRIORITY 1: CHECK FOR SEND BUTTON (Are we in the chat?)
-            // FIX APPLIED HERE: We only look for the send button if a JOB IS PENDING.
-            // If JOB_PENDING is false, the robot ignores the send button, allowing you to type manually.
+            // CRITICAL GUARD:
+            // The robot is NOT allowed to do anything in WhatsApp unless a JOB IS PENDING.
+            // This prevents it from clicking "Send" when you are typing personally.
             if (prefs.getBoolean(KEY_JOB_PENDING, false)) {
-                
+
+                // --- SEARCH FOR ANY SEND BUTTON (Chat OR Preview Screen) ---
                 boolean sendFound = false;
+                
+                // 1. Check Standard IDs (Text Chat)
                 if (findMarkerAndClickID(root, "com.whatsapp:id/conversation_send_arrow")) sendFound = true;
                 if (!sendFound && findMarkerAndClickID(root, "com.whatsapp:id/send")) sendFound = true;
                 
+                // 2. Check Floating Button ID (Common on Preview Screen)
+                if (!sendFound && findMarkerAndClickID(root, "com.whatsapp:id/fab")) sendFound = true;
+                
+                // 3. SPECIAL GREEN BUTTON CHECK (Content Description Search)
+                // This targets the green button in your screenshot which has description "Send".
+                if (!sendFound && findMarkerAndClickContentDescription(root, "Send")) sendFound = true;
+                
                 if (sendFound) {
                     performBroadcastLog("🚀 SEND BUTTON FOUND. CLICKING...");
-                    // SUCCESS! Reset everything immediately.
+                    
+                    // SUCCESS! NOW we turn off the job token.
                     prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
                     
                     new Handler(Looper.getMainLooper()).postDelayed(() -> 
@@ -147,24 +159,23 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     return; // Stop here, job done.
                 }
 
-                // VISUAL STATUS (Shows only if job is pending)
+                // VISUAL STATUS
                 if (System.currentTimeMillis() - lastToastTime > 3000) {
                     new Handler(Looper.getMainLooper()).post(() -> 
                         Toast.makeText(getApplicationContext(), "🤖 Robot Searching: " + targetGroup, Toast.LENGTH_SHORT).show());
                     lastToastTime = System.currentTimeMillis();
                 }
-            }
 
-            // PRIORITY 2: CHECK FOR GROUP NAME (Are we in the list?)
-            // We also check JOB_PENDING here to stop scrolling once the job is done.
-            if (prefs.getBoolean(KEY_JOB_PENDING, false) && !targetGroup.isEmpty()) {
-                if (findMarkerAndClick(root, targetGroup, true)) {
-                    performBroadcastLog("✅ GROUP FOUND. CLICKING...");
-                    return; // Clicked group, wait for screen change.
+                // --- SEARCH FOR GROUP NAME ---
+                if (!targetGroup.isEmpty()) {
+                    if (findMarkerAndClick(root, targetGroup, true)) {
+                        performBroadcastLog("✅ GROUP FOUND. CLICKING...");
+                        return; // Clicked group, wait for screen change.
+                    }
+                    
+                    // If group not found, Scroll.
+                    if (!isScrolling) performScroll(root);
                 }
-                
-                // If group not found, Scroll.
-                if (!isScrolling) performScroll(root);
             }
         }
     }
@@ -221,6 +232,30 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (nodes != null && !nodes.isEmpty()) {
             executeVisualClick(nodes.get(0));
             return true;
+        }
+        return false;
+    }
+
+    // NEW UTILITY: Specifically looks for Content Description "Send" (The Green Button)
+    private boolean findMarkerAndClickContentDescription(AccessibilityNodeInfo root, String desc) {
+        if (root == null || desc == null) return false;
+        String target = desc.toLowerCase();
+        
+        if (root.getContentDescription() != null) {
+            String nodeDesc = root.getContentDescription().toString().toLowerCase();
+            if (nodeDesc.equals(target) || nodeDesc.contains(target)) {
+                 if (root.isClickable()) {
+                     executeVisualClick(root);
+                     return true;
+                 } else if (root.getParent() != null && root.getParent().isClickable()) {
+                     executeVisualClick(root.getParent());
+                     return true;
+                 }
+            }
+        }
+        
+        for (int i = 0; i < root.getChildCount(); i++) {
+            if (findMarkerAndClickContentDescription(root.getChild(i), desc)) return true;
         }
         return false;
     }
