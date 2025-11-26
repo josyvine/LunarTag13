@@ -28,7 +28,7 @@ import java.util.Map;
 
 /**
  * The main screen of the application.
- * UPDATED: Handles navigation and LIVE LOG RECEIVER for the Robot.
+ * UPDATED: Handles navigation for Help and Contact icons.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -101,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
             navController = navHostFragment.getNavController();
         }
 
-        // --- NEW: CUSTOM NAVIGATION LOGIC FOR 6 ICONS ---
+        // --- CUSTOM NAVIGATION LOGIC ---
         
         // 1. Dashboard
         binding.navDashboard.setOnClickListener(new View.OnClickListener() {
@@ -148,7 +148,25 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 6. Settings
+        // 6. Help (NEW)
+        binding.navHelp.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_help);
+                updateIconVisuals(binding.navHelp);
+            }
+        });
+
+        // 7. Contact Us (NEW)
+        binding.navContact.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                navController.navigate(R.id.navigation_contact);
+                updateIconVisuals(binding.navContact);
+            }
+        });
+
+        // 8. Settings
         binding.navSettings.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -187,11 +205,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         // REGISTER RECEIVER: Start listening for robot logs
-        // standard registerReceiver works for standard broadcasts from Service
         IntentFilter filter = new IntentFilter("com.lunartag.ACTION_LOG_UPDATE");
-        // For Android 14+ compatibility (if targetSDK >= 34), consider specifying flags if needed, 
-        // but standard registerReceiver(receiver, filter) is sufficient for internal app use usually.
-        // If you crash on Android 14, use ContextCompat.registerReceiver with RECEIVER_NOT_EXPORTED.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
              registerReceiver(logReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -202,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // UNREGISTER RECEIVER: Stop listening when app is backgrounded (optional, but good practice)
+        // UNREGISTER RECEIVER
         try {
             unregisterReceiver(logReceiver);
         } catch (IllegalArgumentException e) {
@@ -211,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Optional: Helper to visually highlight the active tab.
+     * Helper to visually highlight the active tab.
      * Resets all icons to default color, then tints the active one.
      */
     private void updateIconVisuals(View activeView) {
@@ -225,6 +239,8 @@ public class MainActivity extends AppCompatActivity {
         binding.navGallery.setColorFilter(inactiveColor);
         binding.navRobot.setColorFilter(inactiveColor);
         binding.navApps.setColorFilter(inactiveColor);
+        binding.navHelp.setColorFilter(inactiveColor);    // NEW
+        binding.navContact.setColorFilter(inactiveColor); // NEW
         binding.navSettings.setColorFilter(inactiveColor);
 
         // Set Active
