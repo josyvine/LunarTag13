@@ -348,11 +348,20 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         return null;
     }
 
+    // --- UPDATED LOGGING METHOD ---
     private void performBroadcastLog(String msg) {
         try {
             System.out.println("LUNARTAG_LOG: " + msg);
+            
+            // Determine Type based on keywords
+            String type = "info";
+            if (msg != null && (msg.toLowerCase().contains("error") || msg.toLowerCase().contains("fail") || msg.toLowerCase().contains("missing"))) {
+                type = "error";
+            }
+
             Intent intent = new Intent("com.lunartag.ACTION_LOG_UPDATE");
             intent.putExtra("log_msg", msg);
+            intent.putExtra("log_type", type); // Added type for blinking logic
             intent.setPackage(getPackageName());
             getApplicationContext().sendBroadcast(intent);
         } catch (Exception e) {}
