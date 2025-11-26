@@ -103,28 +103,44 @@ public class ImageViewerActivity extends AppCompatActivity {
         if (currentPos < 0 || currentPos >= imagePaths.size()) return;
 
         String path = imagePaths.get(currentPos);
-        File file = new File(path);
+        Uri uri = null;
 
-        if (file.exists()) {
+        // FIXED: Check if it's a Custom Folder (Content URI) or Internal File
+        if (path.startsWith("content://")) {
+            // It is a SAF URI, parse directly
             try {
-                // Generate Secure URI
-                Uri uri = FileProvider.getUriForFile(
-                        this,
-                        getPackageName() + ".fileprovider",
-                        file
-                );
-
-                Intent shareIntent = new Intent(Intent.ACTION_SEND);
-                shareIntent.setType("image/jpeg");
-                shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
-                shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-                startActivity(Intent.createChooser(shareIntent, "Share Image via..."));
+                uri = Uri.parse(path);
             } catch (Exception e) {
-                Toast.makeText(this, "Error creating share intent", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Error parsing URI", Toast.LENGTH_SHORT).show();
+                return;
             }
         } else {
-            Toast.makeText(this, "File does not exist", Toast.LENGTH_SHORT).show();
+            // It is a Standard File
+            File file = new File(path);
+            if (file.exists()) {
+                try {
+                    // Generate Secure URI for internal file
+                    uri = FileProvider.getUriForFile(
+                            this,
+                            getPackageName() + ".fileprovider",
+                            file
+                    );
+                } catch (Exception e) {
+                    Toast.makeText(this, "Error creating share intent", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            } else {
+                Toast.makeText(this, "File does not exist", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+
+        if (uri != null) {
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("image/jpeg");
+            shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(shareIntent, "Share Image via..."));
         }
     }
 
@@ -148,10 +164,6 @@ public class ImageViewerActivity extends AppCompatActivity {
             AppDatabase db = AppDatabase.getDatabase(this);
             PhotoDao dao = db.photoDao();
             
-            // We need to find the photo ID by its path to cancel the alarm
-            // Note: This requires a raw query or iterating, or adding a method to DAO. 
-            // Since standard DAO usually gets by ID, we'll assume we fetch all and filter, 
-            // or better, add a helper if needed. For now, efficient iteration:
             List<Photo> allPhotos = dao.getAllPhotos(); 
             Photo targetPhoto = null;
             for (Photo p : allPhotos) {
@@ -171,9 +183,18 @@ public class ImageViewerActivity extends AppCompatActivity {
             }
 
             // 2. Delete Physical File
-            File file = new File(pathToDelete);
-            if (file.exists()) {
-                file.delete();
+            // FIXED: Handle ContentResolver delete for SAF URIs
+            try {
+                if (pathToDelete.startsWith("content://")) {
+                    getContentResolver().delete(Uri.parse(pathToDelete), null, null);
+                } else {
+                    File file = new File(pathToDelete);
+                    if (file.exists()) {
+                        file.delete();
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
 
             // 3. Update UI
