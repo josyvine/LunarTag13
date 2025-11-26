@@ -40,19 +40,26 @@
         android:label="Target Apps"
         tools:layout="@layout/fragment_apps" />
 
-    <!-- NEW: Help Screen -->
+    <!-- Help Screen -->
     <fragment
         android:id="@+id/navigation_help"
         android:name="com.lunartag.app.ui.help.HelpFragment"
         android:label="Help &amp; Guide"
         tools:layout="@layout/fragment_help" />
 
-    <!-- NEW: Contact Us Screen -->
+    <!-- Contact Us Screen -->
     <fragment
         android:id="@+id/navigation_contact"
         android:name="com.lunartag.app.ui.contact.ContactFragment"
         android:label="Contact Us"
         tools:layout="@layout/fragment_contact" />
+
+    <!-- NEW: Logs Screen -->
+    <fragment
+        android:id="@+id/navigation_logs"
+        android:name="com.lunartag.app.ui.logs.LogFragment"
+        android:label="System Logs"
+        tools:layout="@layout/fragment_logs" />
 
     <!-- Settings Screen Fragment Destination -->
     <fragment
