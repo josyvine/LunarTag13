@@ -93,9 +93,12 @@
             animation: fade-in-logo 2.5s ease-in-out forwards;
         }
 
-        /* THE ACTUAL IMAGE */
+        /* THE ACTUAL IMAGE - FIXED SCALING */
         .my-app-logo {
-            width: 80%;
+            /* We limit max-width/height to 60% to ensure it fits inside the circle */
+            max-width: 60%;
+            max-height: 60%;
+            width: auto;
             height: auto;
             object-fit: contain;
             animation: zoom-logo 3s ease-out forwards;
@@ -163,7 +166,6 @@
 
         <!-- The Content Revealed Inside -->
         <div class="logo-reveal">
-            <!-- UPDATED: Changing extension to .png to match your file -->
             <img src="logo.png" alt="Lunar Tag" class="my-app-logo">
         </div>
     </div>
