@@ -65,8 +65,12 @@ public class AlarmReceiver extends BroadcastReceiver {
             if (filePath.startsWith("content://")) {
                 // Custom Folder (SD Card / SAF)
                 imageUri = Uri.parse(filePath);
-                // We trust SAF URIs persist, but we verify access permissions logically
-                context.getContentResolver().takePersistableUriPermission(imageUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                
+                // FIXED: Removed the "takePersistableUriPermission" call.
+                // This call was causing a SecurityException and forcing the code to abort 
+                // because we cannot "take" permission on a reconstructed URI here.
+                // The app already owns the permission via StorageUtils, so we just use the URI.
+                
             } else {
                 // Internal Storage
                 File file = new File(filePath);
