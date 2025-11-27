@@ -15,7 +15,6 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
@@ -25,33 +24,33 @@ public class OverlayService extends Service {
 
     private static OverlayService instance;
     private WindowManager windowManager;
-    
+
     // Views
     private View overlayView; // The Red Blink Box
     private View markerBox;
-    
+
     private View trainingView; // The Draggable Crosshair
-    
+
     // Params
     private WindowManager.LayoutParams blinkParams;
     private WindowManager.LayoutParams trainingParams;
-    
+
     private boolean isBlinkAttached = false;
     private boolean isTrainingAttached = false;
-    
+
     // NEW: Track which coordinate we are currently training
     // Default is SHARE because that was the original single mode
-    private String currentTrainMode = "MODE_SHARE"; 
-    
+    private String currentTrainMode = "MODE_SHARE";
+
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     // Prefs to save coordinates
     private static final String PREFS_ACCESSIBILITY = "LunarTagAccessPrefs";
-    
+
     // Coordinate Keys (Memory Slots)
     private static final String KEY_ICON_X = "share_icon_x";
     private static final String KEY_ICON_Y = "share_icon_y";
-    
+
     // NEW KEYS for Option B
     private static final String KEY_GROUP_X = "group_x";
     private static final String KEY_GROUP_Y = "group_y";
@@ -65,7 +64,7 @@ public class OverlayService extends Service {
         super.onCreate();
         instance = this;
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        
+
         // 1. INFLATE RED BLINK LAYOUT (Original)
         overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_marker_view, null);
         markerBox = overlayView.findViewById(R.id.marker_box);
@@ -82,10 +81,10 @@ public class OverlayService extends Service {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 layoutFlag,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | 
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | 
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, // Allow clicks to pass through
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, // Allow clicks to pass through
                 PixelFormat.TRANSLUCENT);
 
         blinkParams.gravity = Gravity.TOP | Gravity.START;
@@ -100,7 +99,7 @@ public class OverlayService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && "ACTION_START_TRAINING".equals(intent.getAction())) {
-            
+
             // NEW: Capture which button the user clicked in Settings
             String mode = intent.getStringExtra("TRAIN_MODE");
             if (mode != null) {
@@ -108,7 +107,7 @@ public class OverlayService extends Service {
             } else {
                 this.currentTrainMode = "MODE_SHARE"; // Fallback
             }
-            
+
             showTrainingTarget();
         }
         return START_STICKY;
@@ -128,7 +127,7 @@ public class OverlayService extends Service {
                 // Update Position
                 blinkParams.x = bounds.left;
                 blinkParams.y = bounds.top;
-                
+
                 // Resize box
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) markerBox.getLayoutParams();
                 layoutParams.width = bounds.width();
@@ -179,7 +178,7 @@ public class OverlayService extends Service {
     }
 
     // =============================================================
-    // PART 2: NEW TRAINING LOGIC (DRAGGABLE TARGET)
+    // PART 2: NEW TRAINING LOGIC (DRAGGABLE TARGET + TAP TO SAVE)
     // =============================================================
 
     private void showTrainingTarget() {
@@ -189,9 +188,9 @@ public class OverlayService extends Service {
             try {
                 // 1. Inflate the Crosshair Layout
                 trainingView = LayoutInflater.from(this).inflate(R.layout.overlay_training_view, null);
-                
+
                 // 2. Configure Params (Clickable this time!)
-                int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? 
+                int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ?
                         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE;
 
                 trainingParams = new WindowManager.LayoutParams(
@@ -205,19 +204,18 @@ public class OverlayService extends Service {
                 trainingParams.x = 500; // Default start pos
                 trainingParams.y = 1000;
 
-                // 3. Add Touch Listener for Dragging
+                // 3. Add Touch Listener for Dragging AND Tapping
                 setupDragListener(trainingView);
 
-                // 4. Setup Save Button
-                Button btnSave = trainingView.findViewById(R.id.btn_save_position);
-                btnSave.setOnClickListener(v -> saveCoordinates());
+                // Note: We removed the Button Logic here because the button is gone from XML.
+                // Saving is now handled inside setupDragListener (ACTION_UP).
 
                 windowManager.addView(trainingView, trainingParams);
                 isTrainingAttached = true;
 
                 // Toast to remind user what they are training
-                String msg = "Training: " + currentTrainMode;
-                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+                String msg = "Drag to Icon -> Tap to Save (" + currentTrainMode + ")";
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -232,6 +230,11 @@ public class OverlayService extends Service {
             private int initialY;
             private float initialTouchX;
             private float initialTouchY;
+            private long startClickTime;
+
+            // Thresholds to distinguish between a TAP and a DRAG
+            private static final int MAX_CLICK_DURATION = 200; // Milliseconds
+            private static final int MAX_CLICK_DISTANCE = 15;  // Pixels
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -241,12 +244,25 @@ public class OverlayService extends Service {
                         initialY = trainingParams.y;
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
+                        startClickTime = System.currentTimeMillis();
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
                         trainingParams.x = initialX + (int) (event.getRawX() - initialTouchX);
                         trainingParams.y = initialY + (int) (event.getRawY() - initialTouchY);
                         windowManager.updateViewLayout(trainingView, trainingParams);
+                        return true;
+
+                    case MotionEvent.ACTION_UP:
+                        long clickDuration = System.currentTimeMillis() - startClickTime;
+                        float dx = event.getRawX() - initialTouchX;
+                        float dy = event.getRawY() - initialTouchY;
+                        double distance = Math.sqrt(dx * dx + dy * dy);
+
+                        // If user touched quickly and didn't move much, consider it a CLICK
+                        if (clickDuration < MAX_CLICK_DURATION && distance < MAX_CLICK_DISTANCE) {
+                            saveCoordinates();
+                        }
                         return true;
                 }
                 return false;
@@ -259,8 +275,9 @@ public class OverlayService extends Service {
      */
     private void saveCoordinates() {
         // Calculate center of the crosshair (approx offset)
-        int targetX = trainingParams.x + 75; 
-        int targetY = trainingParams.y + 75; 
+        // Since icon is 50dp (~150px depending on screen), we offset to center.
+        int targetX = trainingParams.x + 75;
+        int targetY = trainingParams.y + 75;
 
         SharedPreferences prefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
@@ -272,19 +289,19 @@ public class OverlayService extends Service {
                 editor.putInt(KEY_GROUP_Y, targetY);
                 Toast.makeText(this, "Group Location Saved!", Toast.LENGTH_SHORT).show();
                 break;
-                
+
             case "MODE_CHAT":
                 editor.putInt(KEY_CHAT_X, targetX);
                 editor.putInt(KEY_CHAT_Y, targetY);
                 Toast.makeText(this, "Chat Send Icon Saved!", Toast.LENGTH_SHORT).show();
                 break;
-                
+
             case "MODE_PREVIEW":
                 editor.putInt(KEY_PREVIEW_X, targetX);
                 editor.putInt(KEY_PREVIEW_Y, targetY);
                 Toast.makeText(this, "Final Send Button Saved!", Toast.LENGTH_SHORT).show();
                 break;
-                
+
             case "MODE_SHARE":
             default:
                 editor.putInt(KEY_ICON_X, targetX);
@@ -292,7 +309,7 @@ public class OverlayService extends Service {
                 Toast.makeText(this, "Share Sheet Icon Saved!", Toast.LENGTH_SHORT).show();
                 break;
         }
-        
+
         editor.apply();
         removeTrainingView();
     }
