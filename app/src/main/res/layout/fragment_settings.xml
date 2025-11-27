@@ -132,16 +132,84 @@
                         android:maxLines="1" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <!-- NEW BUTTON: CALIBRATE COORDINATES -->
+                <!-- ============================================= -->
+                <!-- NEW SECTION: WHATSAPP AUTOMATION METHOD       -->
+                <!-- ============================================= -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:text="WhatsApp Automation Method"
+                    android:textStyle="bold"
+                    android:textColor="@color/black" />
+
+                <RadioGroup
+                    android:id="@+id/radio_group_wa_method"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <RadioButton
+                        android:id="@+id/radio_method_red_box"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Option A: Smart Scan (Red Box)"
+                        android:checked="true" />
+
+                    <RadioButton
+                        android:id="@+id/radio_method_coordinate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Option B: Manual Coordinates" />
+                </RadioGroup>
+
+                <!-- ============================================= -->
+                <!-- TRAINING BUTTONS (SHARE SHEET & WHATSAPP)     -->
+                <!-- ============================================= -->
+                
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Calibration & Training"
+                    android:textStyle="bold" />
+
+                <!-- SHARE SHEET CALIBRATION (EXISTING) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/button_calibrate_share_icon"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="🎯 Calibrate Share Icon Position"
+                    android:layout_marginTop="4dp"
+                    android:text="🎯 Train: Share Sheet Icon"
                     android:textColor="#D32F2F"
                     app:strokeColor="#D32F2F" />
+
+                <!-- NEW: OPTION B TRAINING BUTTONS -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_train_group"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="1️⃣ Train: Group Position" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_train_chat_send"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="2️⃣ Train: Chat Send Icon" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_train_preview_send"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="3️⃣ Train: Final Send Button" />
+
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/button_save_settings"
