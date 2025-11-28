@@ -20,11 +20,11 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
     private static final String PREFS_ACCESSIBILITY = "LunarTagAccessPrefs";
     private static final String PREFS_SETTINGS = "LunarTagSettings"; // To read Option A vs B
-    
+
     private static final String KEY_AUTO_MODE = "automation_mode"; 
     private static final String KEY_TARGET_GROUP = "target_group_name";
     private static final String KEY_WA_METHOD = "wa_automation_method"; // "red_box" or "coordinate"
-    
+
     // Coordinates (Share Sheet)
     private static final String KEY_ICON_X = "share_icon_x";
     private static final String KEY_ICON_Y = "share_icon_y";
@@ -45,7 +45,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     private boolean isClickingPending = false; 
     private boolean isScrolling = false;
     private long lastToastTime = 0;
-    
+
     // Safety flag to prevent Share Sheet loop
     private boolean shareSheetClicked = false;
 
@@ -99,7 +99,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         SharedPreferences prefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
         SharedPreferences settings = getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
-        
+
         String mode = prefs.getString(KEY_AUTO_MODE, "semi");
         String targetGroup = prefs.getString(KEY_TARGET_GROUP, "");
         String waMethod = settings.getString(KEY_WA_METHOD, "red_box"); // Default Option A
@@ -108,12 +108,12 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (prefs.getBoolean(KEY_FORCE_RESET, false)) {
             isClickingPending = false;
             shareSheetClicked = false;
-            
+
             // Reset Option B Sequence Flags
             groupCoordinateClicked = false;
             chatSendCoordinateClicked = false;
             previewSendCoordinateClicked = false;
-            
+
             prefs.edit().putBoolean(KEY_FORCE_RESET, false).apply();
             performBroadcastLog("🔄 NEW JOB DETECTED. MEMORY WIPED.");
         }
@@ -125,14 +125,14 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // 3. SHARE SHEET LOGIC (Coordinate Click - One Shot)
         // ====================================================================
         boolean isShareSheet = hasText(root, "Cancel") || pkgName.equals("android") || pkgName.contains("chooser");
-        
+
         // Reset the local Share Sheet flag if we are NOT on the share sheet
         if (!isShareSheet) {
             shareSheetClicked = false;
         }
 
         if (mode.equals("full") && isShareSheet && !pkgName.contains("whatsapp")) {
-            
+
             // Only click if Job is TRUE AND we haven't clicked this specific instance yet.
             if (prefs.getBoolean(KEY_JOB_PENDING, false) && !shareSheetClicked) {
                 int x = prefs.getInt(KEY_ICON_X, 0);
@@ -144,11 +144,11 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     }
 
                     performBroadcastLog("✅ Share Sheet. Clicking X=" + x + " Y=" + y);
-                    
+
                     // Mark as clicked so we don't loop/flash while the sheet is closing
                     shareSheetClicked = true;
                     isClickingPending = true;
-                    
+
                     // Delay 500ms for animation
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         dispatchGesture(createClickGesture(x, y), null, null);
@@ -170,34 +170,34 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                 // -----------------------------------------------------------
                 // BRANCH: CHECK METHOD (Option A: Red Box vs Option B: Coordinate)
                 // -----------------------------------------------------------
-                
+
                 if (waMethod.equals("coordinate")) {
                     // >>> OPTION B: MANUAL COORDINATE MODE <<<
                     performCoordinateLogic(root, prefs);
                     return; // Exit here, do not run Red Box logic
                 }
-                
+
                 // >>> OPTION A: EXISTING RED BOX LOGIC (DEFAULT) <<<
 
                 // --- SEARCH FOR ANY SEND BUTTON ---
                 boolean sendFound = false;
-                
+
                 // 1. Standard Chat IDs
                 if (findMarkerAndClickID(root, "com.whatsapp:id/conversation_send_arrow")) sendFound = true;
                 if (!sendFound && findMarkerAndClickID(root, "com.whatsapp:id/send")) sendFound = true;
-                
+
                 // 2. Floating Button (Preview Screen)
                 if (!sendFound && findMarkerAndClickID(root, "com.whatsapp:id/fab")) sendFound = true;
-                
+
                 // 3. Content Description Search (Green Button Fix)
                 if (!sendFound && findMarkerAndClickContentDescription(root, "Send")) sendFound = true;
-                
+
                 if (sendFound) {
                     performBroadcastLog("🚀 SEND BUTTON FOUND. CLICKING...");
-                    
+
                     // SUCCESS! NOW we turn off the job token.
                     prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
-                    
+
                     new Handler(Looper.getMainLooper()).postDelayed(() -> 
                         Toast.makeText(getApplicationContext(), "🚀 MESSAGE SENT", Toast.LENGTH_SHORT).show(), 500);
                     return; // Stop here, job done.
@@ -216,7 +216,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                         performBroadcastLog("✅ GROUP FOUND. CLICKING...");
                         return; // Clicked group, wait for screen change.
                     }
-                    
+
                     // If group not found, Scroll.
                     if (!isScrolling) performScroll(root);
                 }
@@ -228,13 +228,13 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     // NEW LOGIC: OPTION B (COORDINATE SEQUENCES)
     // ====================================================================
     private void performCoordinateLogic(AccessibilityNodeInfo root, SharedPreferences prefs) {
-        
+
         // --- SEQUENCE 1: GROUP SELECTION ---
         // Condition: We haven't clicked the group yet.
         if (!groupCoordinateClicked) {
             int x = prefs.getInt(KEY_GROUP_X, 0);
             int y = prefs.getInt(KEY_GROUP_Y, 0);
-            
+
             if (x > 0 && y > 0) {
                 performBroadcastLog("📍 Coord Mode: Step 1 (Group). Clicking...");
                 executeCoordinateClick(x, y);
@@ -243,54 +243,48 @@ public class LunarTagAccessibilityService extends AccessibilityService {
             return;
         }
 
-        // --- SEQUENCE 2: CHAT SEND/ATTACH ICON ---
-        // Condition: Group is done, but Chat Icon not clicked.
-        // Screen Check: Look for Input Box (entry) to confirm we are inside chat.
+        // --- SEQUENCE 2: GREEN ARROW (Contact List Next) ---
+        // Condition: Group is done, but Arrow not clicked.
+        // FIX: Removed "id/entry" check. We are on the Contact List screen.
+        // We simply wait for the next event (which happens after Group is clicked/highlighted).
         if (groupCoordinateClicked && !chatSendCoordinateClicked) {
-            
-            // Check if we are actually in a chat (Look for input field ID)
-            List<AccessibilityNodeInfo> inputNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/entry");
-            // Also check for voice note button as backup marker
-            List<AccessibilityNodeInfo> voiceNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/voice_note_btn");
-            
-            if ((inputNodes != null && !inputNodes.isEmpty()) || (voiceNodes != null && !voiceNodes.isEmpty())) {
-                int x = prefs.getInt(KEY_CHAT_X, 0);
-                int y = prefs.getInt(KEY_CHAT_Y, 0);
-                
-                if (x > 0 && y > 0) {
-                    performBroadcastLog("📍 Coord Mode: Step 2 (Chat Icon). Clicking...");
-                    executeCoordinateClick(x, y);
-                    chatSendCoordinateClicked = true; // LOCK SEQUENCE 2
-                }
+
+            int x = prefs.getInt(KEY_CHAT_X, 0);
+            int y = prefs.getInt(KEY_CHAT_Y, 0);
+
+            if (x > 0 && y > 0) {
+                performBroadcastLog("📍 Coord Mode: Step 2 (Next Arrow). Clicking...");
+                executeCoordinateClick(x, y);
+                chatSendCoordinateClicked = true; // LOCK SEQUENCE 2
             }
             return;
         }
 
         // --- SEQUENCE 3: FINAL PREVIEW SEND ---
-        // Condition: Chat Icon is done, but Final Send not clicked.
-        // Screen Check: Look for Caption Box or Filter/Crop/Send IDs
+        // Condition: Arrow is done, but Final Send not clicked.
+        // Screen Check: Look for Caption Box or Filter/Crop/Send IDs to confirm we are on Preview.
         if (chatSendCoordinateClicked && !previewSendCoordinateClicked) {
-            
+
             // Check if we are on preview screen (Caption box is usually present)
             List<AccessibilityNodeInfo> captionNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/caption");
             List<AccessibilityNodeInfo> sendNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send");
             List<AccessibilityNodeInfo> doodleNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/doodle");
-            
+
             if ((captionNodes != null && !captionNodes.isEmpty()) || 
                 (sendNodes != null && !sendNodes.isEmpty()) || 
                 (doodleNodes != null && !doodleNodes.isEmpty())) {
-                
+
                 int x = prefs.getInt(KEY_PREVIEW_X, 0);
                 int y = prefs.getInt(KEY_PREVIEW_Y, 0);
-                
+
                 if (x > 0 && y > 0) {
                     performBroadcastLog("📍 Coord Mode: Step 3 (Final Send). Clicking...");
                     executeCoordinateClick(x, y);
                     previewSendCoordinateClicked = true; // LOCK SEQUENCE 3
-                    
+
                     // SUCCESS! Disable the Job.
                     prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
-                    
+
                     new Handler(Looper.getMainLooper()).postDelayed(() -> 
                         Toast.makeText(getApplicationContext(), "🚀 SEQUENCE COMPLETE", Toast.LENGTH_SHORT).show(), 500);
                 }
@@ -302,12 +296,12 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     private void executeCoordinateClick(int x, int y) {
         if (isClickingPending) return;
         isClickingPending = true;
-        
+
         // Show Visual Marker
         if (OverlayService.getInstance() != null) {
             OverlayService.getInstance().showMarkerAtCoordinate(x, y);
         }
-        
+
         // Execute Click after delay
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             dispatchGesture(createClickGesture(x, y), null, null);
@@ -374,7 +368,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     private boolean findMarkerAndClickContentDescription(AccessibilityNodeInfo root, String desc) {
         if (root == null || desc == null) return false;
         String target = desc.toLowerCase();
-        
+
         if (root.getContentDescription() != null) {
             String nodeDesc = root.getContentDescription().toString().toLowerCase();
             if (nodeDesc.equals(target) || nodeDesc.contains(target)) {
@@ -387,7 +381,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                  }
             }
         }
-        
+
         for (int i = 0; i < root.getChildCount(); i++) {
             if (findMarkerAndClickContentDescription(root.getChild(i), desc)) return true;
         }
