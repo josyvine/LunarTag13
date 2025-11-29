@@ -146,24 +146,25 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
                     performBroadcastLog("✅ Share Sheet. Clicking X=" + x + " Y=" + y);
 
-                    // Mark as clicked so we don't loop/flash while the sheet is closing
+                    // Mark as clicked so we don't loop
                     shareSheetClicked = true;
+                    
+                    // *** STOP LOGIC ***
+                    // We lock the robot immediately (isClickingPending = true).
+                    // This prevents ANY other logic (including WhatsApp Sequence) from running.
                     isClickingPending = true;
 
-                    // Delay 500ms before clicking
+                    // 1. Perform the Share Sheet Click
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         dispatchGesture(createClickGesture(x, y), null, null);
                     }, 500);
 
-                    // *** TIMING FIX ***
-                    // We extend the "Pending" lock for 2000ms (2 seconds).
-                    // This "Stops" the robot temporarily, allowing WhatsApp to fully open
-                    // and the Contact List to appear. 
-                    // Once this timer ends, the robot wakes up, sees we are in WhatsApp,
-                    // and executes Step 1 (Group Click) on the CORRECT screen.
+                    // 2. KEEP LOCKED FOR 3 SECONDS
+                    // We force the robot to sleep for 3 seconds while WhatsApp opens.
+                    // This ensures we are fully on the "Contact List" screen before the Sequence starts.
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        isClickingPending = false; 
-                    }, 2000);
+                        isClickingPending = false; // UNLOCK: Now Sequence Logic will run.
+                    }, 3000);
                 }
             }
             return;
