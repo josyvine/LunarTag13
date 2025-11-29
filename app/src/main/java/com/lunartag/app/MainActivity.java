@@ -24,6 +24,11 @@ import androidx.core.content.ContextCompat;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
 
+import com.google.android.gms.ads.AdRequest;
+import com.google.android.gms.ads.AdView;
+import com.google.android.gms.ads.MobileAds;
+import com.google.android.gms.ads.initialization.InitializationStatus;
+import com.google.android.gms.ads.initialization.OnInitializationCompleteListener;
 import com.lunartag.app.databinding.ActivityMainBinding;
 import com.lunartag.app.firebase.RemoteConfigManager;
 import com.lunartag.app.ui.logs.LogFragment;
@@ -34,7 +39,7 @@ import java.util.Map;
 
 /**
  * The main screen of the application.
- * UPDATED: Handles centralized logging and blinking notification icon.
+ * UPDATED: Handles centralized logging, blinking notification icon, and AdMob Banner.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -94,6 +99,21 @@ public class MainActivity extends AppCompatActivity {
 
         // Initialize Log History
         logHistory.append("-- SYSTEM STARTED --\n");
+
+        // *** NEW: Initialize Mobile Ads SDK ***
+        MobileAds.initialize(this, new OnInitializationCompleteListener() {
+            @Override
+            public void onInitializationComplete(InitializationStatus initializationStatus) {
+                // SDK Initialized
+            }
+        });
+
+        // *** NEW: Load Banner Ad ***
+        AdView mAdView = findViewById(R.id.adView);
+        if (mAdView != null) {
+            AdRequest adRequest = new AdRequest.Builder().build();
+            mAdView.loadAd(adRequest);
+        }
 
         // Permissions Setup
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
