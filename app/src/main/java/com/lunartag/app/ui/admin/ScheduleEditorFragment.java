@@ -21,6 +21,7 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.lunartag.app.databinding.FragmentScheduleEditorBinding;
+import com.lunartag.app.utils.AdManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -52,6 +53,9 @@ public class ScheduleEditorFragment extends Fragment {
     private FragmentScheduleEditorBinding binding;
     private ScheduleAdapter adapter;
     private List<Long> timestampList;
+    
+    // *** NEW: Ad Manager for Slot Control ***
+    private AdManager adManager;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -62,6 +66,9 @@ public class ScheduleEditorFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // Initialize AdManager
+        adManager = new AdManager(requireContext());
 
         // Check Remote Config to see if Admin UI should be shown
         SharedPreferences featurePrefs = requireContext().getSharedPreferences(PREFS_TOGGLES, Context.MODE_PRIVATE);
@@ -101,10 +108,23 @@ public class ScheduleEditorFragment extends Fragment {
     private void updateCountUI() {
         if (binding == null) return;
         
-        int count = timestampList.size();
-        binding.textSlotsRemaining.setText("Slots available: " + count);
+        // 1. Show existing list count
+        int listCount = timestampList.size();
+        
+        // 2. Show Ad Slot Status
+        int level = adManager.getAdLevel();
+        int slotsLeft = adManager.getSlotsRemaining();
+        
+        String statusText;
+        if (level >= 3) {
+            statusText = "Mode: Unlimited (Gold)";
+        } else {
+            statusText = "Credits Left: " + slotsLeft;
+        }
 
-        if (count == 0) {
+        binding.textSlotsRemaining.setText(statusText + " | Active Slots: " + listCount);
+
+        if (listCount == 0) {
             binding.textNoTimestamps.setVisibility(View.VISIBLE);
             binding.recyclerViewTimestamps.setVisibility(View.GONE);
         } else {
@@ -124,36 +144,87 @@ public class ScheduleEditorFragment extends Fragment {
             @Override
             public void onTimeSet(TimePicker view, int hourOfDay, int minute) {
                 
-                // 1. Create a Calendar object for the user's selection
                 Calendar selectedTime = Calendar.getInstance();
                 selectedTime.set(Calendar.HOUR_OF_DAY, hourOfDay);
                 selectedTime.set(Calendar.MINUTE, minute);
                 selectedTime.set(Calendar.SECOND, 0);
                 selectedTime.set(Calendar.MILLISECOND, 0);
                 
-                // 2. Smart Logic to detect "Tomorrow"
+                // Smart Logic to detect "Tomorrow"
                 if (!timestampList.isEmpty()) {
-                    // If we have existing items, and this new time is earlier than the last one,
-                    // assume the user means the next day (e.g., adding 1 AM after 11 PM).
                     long lastTimestamp = timestampList.get(timestampList.size() - 1);
                     while (selectedTime.getTimeInMillis() <= lastTimestamp) {
                         selectedTime.add(Calendar.DAY_OF_MONTH, 1);
                     }
                 } else {
-                    // If list is empty, but selected time is earlier than "now", assume tomorrow.
                     Calendar now = Calendar.getInstance();
                     if (selectedTime.before(now)) {
                         selectedTime.add(Calendar.DAY_OF_MONTH, 1);
                     }
                 }
                 
-                addTimestamp(selectedTime.getTimeInMillis());
+                // *** CHANGED: Call Attempt instead of Direct Add ***
+                attemptAddTimestamp(selectedTime.getTimeInMillis());
             }
         }, hour, minute, false);
         picker.show();
     }
 
-    private void addTimestamp(long timestamp) {
+    /**
+     * NEW: Checks for Ad Credits before adding.
+     */
+    private void attemptAddTimestamp(long timestamp) {
+        int level = adManager.getAdLevel();
+        
+        if (level >= 3) {
+            // Level 3 = Unlimited
+            addTimestampInternal(timestamp);
+        } else {
+            // Level 1 or 2 = Check Credits
+            if (adManager.getSlotsRemaining() > 0) {
+                adManager.decrementSlot();
+                addTimestampInternal(timestamp);
+            } else {
+                // Out of Credits -> Prompt Upgrade
+                showAdUpgradeDialog(level);
+            }
+        }
+    }
+
+    private void showAdUpgradeDialog(int currentLevel) {
+        String title = "Out of Credits";
+        String msg = "";
+        
+        if (currentLevel == 1) {
+            msg = "You used your 3 free slots.\nWatch a short video to get 5 MORE slots?";
+        } else {
+            msg = "You used your extra slots.\nWatch one last video to unlock UNLIMITED mode for today?";
+        }
+
+        new AlertDialog.Builder(getContext())
+                .setTitle(title)
+                .setMessage(msg)
+                .setCancelable(false)
+                .setPositiveButton("Watch Ad", (dialog, which) -> {
+                    // Show Ad
+                    adManager.showRewardedAd(requireActivity(), new AdManager.OnAdRewardListener() {
+                        @Override
+                        public void onRewardEarned() {
+                            Toast.makeText(getContext(), "Reward Granted!", Toast.LENGTH_SHORT).show();
+                            updateCountUI(); // Refresh UI to show new credits
+                        }
+
+                        @Override
+                        public void onAdFailed() {
+                            Toast.makeText(getContext(), "Ad not ready. Try again.", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void addTimestampInternal(long timestamp) {
         timestampList.add(timestamp);
         Collections.sort(timestampList); 
         adapter.notifyDataSetChanged();
@@ -161,20 +232,18 @@ public class ScheduleEditorFragment extends Fragment {
         updateCountUI();
     }
 
-    // --- Logic: Auto-Generate Schedule (UPDATED TO USE SETTINGS) ---
+    // --- Logic: Auto-Generate Schedule (UPDATED) ---
 
     private void showAutoGenerateDialog() {
-        // 1. Retrieve the Shift Start/End times from General Settings
         SharedPreferences settingsPrefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
-        // Default to 8:00 AM if nothing is saved in settings
         String startStr = settingsPrefs.getString(KEY_SHIFT_START, "08:00 AM");
         String endStr = settingsPrefs.getString(KEY_SHIFT_END, "08:00 AM");
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         builder.setTitle("Auto-Generate Schedule");
         
-        // Update message to show the actual configured Shift Times
-        builder.setMessage("Generating schedule from Shift Start (" + startStr + ") to Shift End (" + endStr + ").\n\nEnter Interval (Minutes):");
+        builder.setMessage("Generating schedule from " + startStr + " to " + endStr + ".\n\n" +
+                "NOTE: This consumes 1 Credit per slot generated.");
 
         final EditText inputInterval = new EditText(getContext());
         inputInterval.setInputType(InputType.TYPE_CLASS_NUMBER);
@@ -191,14 +260,13 @@ public class ScheduleEditorFragment extends Fragment {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 String intervalStr = inputInterval.getText().toString();
-                int interval = 30; // Default 30 mins
+                int interval = 30; 
                 if (!intervalStr.isEmpty()) {
                     try {
                         interval = Integer.parseInt(intervalStr);
                     } catch (NumberFormatException e) { }
                 }
                 
-                // 2. Parse the strings and generate based on settings
                 parseAndGenerate(startStr, endStr, interval);
             }
         });
@@ -214,28 +282,22 @@ public class ScheduleEditorFragment extends Fragment {
         builder.show();
     }
 
-    /**
-     * Parses the "hh:mm a" strings from settings and calls generateSchedule.
-     */
     private void parseAndGenerate(String startStr, String endStr, int interval) {
         SimpleDateFormat sdf = new SimpleDateFormat("hh:mm a", Locale.US);
         
         try {
-            // Parse Start Time
             Date startDate = sdf.parse(startStr);
             Calendar startCal = Calendar.getInstance();
             if (startDate != null) startCal.setTime(startDate);
             int startHour = startCal.get(Calendar.HOUR_OF_DAY);
             int startMin = startCal.get(Calendar.MINUTE);
 
-            // Parse End Time
             Date endDate = sdf.parse(endStr);
             Calendar endCal = Calendar.getInstance();
             if (endDate != null) endCal.setTime(endDate);
             int endHour = endCal.get(Calendar.HOUR_OF_DAY);
             int endMin = endCal.get(Calendar.MINUTE);
 
-            // Call the generation logic with the parsed hours/minutes
             generateSchedule(startHour, startMin, endHour, endMin, interval);
 
         } catch (ParseException e) {
@@ -245,34 +307,45 @@ public class ScheduleEditorFragment extends Fragment {
     }
 
     private void generateSchedule(int startHour, int startMin, int endHour, int endMin, int intervalMinutes) {
-        timestampList.clear();
+        // We DO NOT clear the list here automatically, we append.
+        // User can clear using "Clear All" button.
         
-        // Set up the Start Calendar (Today)
         Calendar current = Calendar.getInstance();
         current.set(Calendar.HOUR_OF_DAY, startHour);
         current.set(Calendar.MINUTE, startMin);
         current.set(Calendar.SECOND, 0);
         current.set(Calendar.MILLISECOND, 0);
 
-        // Set up the End Calendar
         Calendar end = Calendar.getInstance();
-        // Sync date with current first to ensure accurate comparison
         end.setTimeInMillis(current.getTimeInMillis());
         end.set(Calendar.HOUR_OF_DAY, endHour);
         end.set(Calendar.MINUTE, endMin);
         end.set(Calendar.SECOND, 0);
         end.set(Calendar.MILLISECOND, 0);
 
-        // LOGIC FOR OVERNIGHT SHIFTS:
-        // If End Time is before Start Time (e.g. Start 8 PM, End 4 AM), add 1 day to End.
-        // If End Time equals Start Time (e.g. 8 AM to 8 AM), add 1 day to End (24 hour shift).
         if (end.before(current) || end.equals(current)) {
             end.add(Calendar.DAY_OF_MONTH, 1);
         }
 
-        // Loop and add timestamps based on the interval
+        int addedCount = 0;
+        boolean stoppedForAds = false;
+
+        // Loop and add timestamps
         while (current.before(end) || current.equals(end)) {
+            
+            // *** NEW: Check Credits Inside Loop ***
+            int level = adManager.getAdLevel();
+            if (level < 3 && adManager.getSlotsRemaining() <= 0) {
+                // Out of credits mid-generation
+                stoppedForAds = true;
+                break; // Stop the loop
+            }
+
+            // Add
             timestampList.add(current.getTimeInMillis());
+            if (level < 3) adManager.decrementSlot();
+            addedCount++;
+
             current.add(Calendar.MINUTE, intervalMinutes);
         }
 
@@ -280,7 +353,14 @@ public class ScheduleEditorFragment extends Fragment {
         adapter.notifyDataSetChanged();
         saveTimestamps(timestampList);
         updateCountUI();
-        Toast.makeText(getContext(), "Generated " + timestampList.size() + " slots based on Shift Settings.", Toast.LENGTH_SHORT).show();
+        
+        if (stoppedForAds) {
+            // Show the upgrade dialog if we stopped early
+            showAdUpgradeDialog(adManager.getAdLevel());
+            Toast.makeText(getContext(), "Generated " + addedCount + " slots. Credits exhausted.", Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(getContext(), "Generated " + addedCount + " slots.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void saveTimestamps(List<Long> list) {
