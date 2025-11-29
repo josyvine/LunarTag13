@@ -46,6 +46,11 @@
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
+        <!-- *** NEW: ADMOB APP ID CONFIGURATION *** -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-2223803405403727~9794002642" />
+
         <!-- NEW: Splash Screen (Now the Launcher) -->
         <activity
             android:name=".SplashActivity"
