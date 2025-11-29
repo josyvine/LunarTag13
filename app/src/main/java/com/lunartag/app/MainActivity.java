@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
@@ -12,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.Toast;
@@ -19,6 +21,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.navigation.NavController;
@@ -29,6 +32,12 @@ import com.google.android.gms.ads.AdView;
 import com.google.android.gms.ads.MobileAds;
 import com.google.android.gms.ads.initialization.InitializationStatus;
 import com.google.android.gms.ads.initialization.OnInitializationCompleteListener;
+import com.google.android.play.core.appupdate.AppUpdateInfo;
+import com.google.android.play.core.appupdate.AppUpdateManager;
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory;
+import com.google.android.play.core.install.model.AppUpdateType;
+import com.google.android.play.core.install.model.UpdateAvailability;
+import com.google.android.gms.tasks.Task;
 import com.lunartag.app.databinding.ActivityMainBinding;
 import com.lunartag.app.firebase.RemoteConfigManager;
 import com.lunartag.app.ui.logs.LogFragment;
@@ -39,7 +48,8 @@ import java.util.Map;
 
 /**
  * The main screen of the application.
- * UPDATED: Handles centralized logging, blinking notification icon, and AdMob Banner.
+ * UPDATED: Handles centralized logging, blinking notification icon, AdMob Banner, 
+ * Google Play In-App Updates, and Notification Permissions.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -47,6 +57,10 @@ public class MainActivity extends AppCompatActivity {
     private NavController navController;
     private ActivityResultLauncher<String[]> permissionLauncher;
     private String[] requiredPermissions;
+
+    // --- GOOGLE PLAY IN-APP UPDATE ---
+    private AppUpdateManager appUpdateManager;
+    private static final int APP_UPDATE_REQUEST_CODE = 1001;
 
     // --- CENTRAL LOG STORAGE ---
     // Stores the logs so they persist when switching screens
@@ -100,6 +114,10 @@ public class MainActivity extends AppCompatActivity {
         // Initialize Log History
         logHistory.append("-- SYSTEM STARTED --\n");
 
+        // *** NEW: Initialize In-App Update Manager ***
+        appUpdateManager = AppUpdateManagerFactory.create(this);
+        checkAppUpdate();
+
         // *** NEW: Initialize Mobile Ads SDK ***
         MobileAds.initialize(this, new OnInitializationCompleteListener() {
             @Override
@@ -116,12 +134,14 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Permissions Setup
+        // *** UPDATED: Added POST_NOTIFICATIONS for Android 13+ ***
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requiredPermissions = new String[]{
                     Manifest.permission.CAMERA,
                     Manifest.permission.ACCESS_FINE_LOCATION,
                     Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.READ_MEDIA_IMAGES
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.POST_NOTIFICATIONS // Required for Firebase Push Notifications
             };
         } else {
             requiredPermissions = new String[]{
@@ -215,6 +235,27 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        
+        // --- IN-APP UPDATE RESUME CHECK ---
+        // If an IMMEDIATE update was started but the app was backgrounded,
+        // we need to resume the update view when the app returns to foreground.
+        if (appUpdateManager != null) {
+            appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
+                if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
+                    try {
+                        appUpdateManager.startUpdateFlowForResult(
+                                appUpdateInfo,
+                                AppUpdateType.IMMEDIATE,
+                                this,
+                                APP_UPDATE_REQUEST_CODE
+                        );
+                    } catch (IntentSender.SendIntentException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+        }
+
         IntentFilter filter = new IntentFilter("com.lunartag.ACTION_LOG_UPDATE");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
              registerReceiver(logReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -231,6 +272,46 @@ public class MainActivity extends AppCompatActivity {
         } catch (IllegalArgumentException e) {
             // Receiver not registered
         }
+    }
+
+    /**
+     * Handle the result of the In-App Update flow.
+     */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == APP_UPDATE_REQUEST_CODE) {
+            if (resultCode != RESULT_OK) {
+                // If the update is cancelled or fails, we request it again.
+                // For "Immediate" updates, we generally want to force the user.
+                Log.e("AppUpdate", "Update flow failed! Result code: " + resultCode);
+                // Optional: Show a toast or finish() the activity if the update is mandatory.
+                // For now, we will simply try to check again.
+                checkAppUpdate();
+            }
+        }
+    }
+
+    // --- NEW: CHECK FOR GOOGLE PLAY UPDATES ---
+    private void checkAppUpdate() {
+        Task<AppUpdateInfo> appUpdateInfoTask = appUpdateManager.getAppUpdateInfo();
+
+        appUpdateInfoTask.addOnSuccessListener(appUpdateInfo -> {
+            if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
+                    && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
+                
+                try {
+                    appUpdateManager.startUpdateFlowForResult(
+                            appUpdateInfo,
+                            AppUpdateType.IMMEDIATE,
+                            this,
+                            APP_UPDATE_REQUEST_CODE
+                    );
+                } catch (IntentSender.SendIntentException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
     }
 
     /**
