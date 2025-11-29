@@ -150,11 +150,20 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     shareSheetClicked = true;
                     isClickingPending = true;
 
-                    // Delay 500ms for animation
+                    // Delay 500ms before clicking
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         dispatchGesture(createClickGesture(x, y), null, null);
-                        isClickingPending = false; 
                     }, 500);
+
+                    // *** TIMING FIX ***
+                    // We extend the "Pending" lock for 2000ms (2 seconds).
+                    // This "Stops" the robot temporarily, allowing WhatsApp to fully open
+                    // and the Contact List to appear. 
+                    // Once this timer ends, the robot wakes up, sees we are in WhatsApp,
+                    // and executes Step 1 (Group Click) on the CORRECT screen.
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        isClickingPending = false; 
+                    }, 2000);
                 }
             }
             return;
