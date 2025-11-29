@@ -41,4 +41,8 @@
     <string name="camera_accuracy_label">GPS Accuracy:</string>
     <string name="camera_capture_button_desc">Capture Photo</string>
 
+    <!-- *** NEW: ADMOB UNIT IDS *** -->
+    <string name="admob_banner_id">ca-app-pub-2223803405403727/4653356609</string>
+    <string name="admob_rewarded_id">ca-app-pub-2223803405403727/8079140882</string>
+
 </resources>
