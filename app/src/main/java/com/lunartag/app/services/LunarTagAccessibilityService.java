@@ -127,10 +127,9 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // ====================================================================
         boolean isShareSheet = hasText(root, "Cancel") || pkgName.equals("android") || pkgName.contains("chooser");
 
-        // Reset the local Share Sheet flag if we are NOT on the share sheet
-        if (!isShareSheet) {
-            shareSheetClicked = false;
-        }
+        // *** CHANGED: Do NOT reset memory here blindly. ***
+        // We only reset 'shareSheetClicked' when we successfully reach WhatsApp.
+        // This prevents double-clicking during transition flickering.
 
         if (mode.equals("full") && isShareSheet && !pkgName.contains("whatsapp")) {
 
@@ -146,25 +145,15 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
                     performBroadcastLog("✅ Share Sheet. Clicking X=" + x + " Y=" + y);
 
-                    // Mark as clicked so we don't loop
+                    // Mark as clicked so we don't loop/flash while the sheet is closing
                     shareSheetClicked = true;
-                    
-                    // *** STOP LOGIC ***
-                    // We lock the robot immediately (isClickingPending = true).
-                    // This prevents ANY other logic (including WhatsApp Sequence) from running.
                     isClickingPending = true;
 
-                    // 1. Perform the Share Sheet Click
+                    // Delay 500ms for animation
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         dispatchGesture(createClickGesture(x, y), null, null);
+                        isClickingPending = false; 
                     }, 500);
-
-                    // 2. KEEP LOCKED FOR 3 SECONDS
-                    // We force the robot to sleep for 3 seconds while WhatsApp opens.
-                    // This ensures we are fully on the "Contact List" screen before the Sequence starts.
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        isClickingPending = false; // UNLOCK: Now Sequence Logic will run.
-                    }, 3000);
                 }
             }
             return;
@@ -174,6 +163,11 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // 4. WHATSAPP LOGIC (FLUID / INFINITE)
         // ====================================================================
         if (pkgName.contains("whatsapp")) {
+
+            // *** FIX: MEMORY RESET ***
+            // Now that we are safely inside WhatsApp, we reset the Share Sheet memory.
+            // This ensures it is ready for the NEXT job, but prevents double-clicking for THIS job.
+            shareSheetClicked = false;
 
             // CRITICAL GUARD: Robot only works if JOB_PENDING is true.
             if (prefs.getBoolean(KEY_JOB_PENDING, false)) {
@@ -301,7 +295,7 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     groupCoordinateClicked = false;
                     chatSendCoordinateClicked = false;
                     previewSendCoordinateClicked = false;
-                    shareSheetClicked = false;
+                    // Note: shareSheetClicked is reset at the top of the WhatsApp block now
                     // ---------------------------------------
 
                     new Handler(Looper.getMainLooper()).postDelayed(() -> 
