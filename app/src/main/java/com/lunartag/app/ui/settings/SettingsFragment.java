@@ -19,6 +19,7 @@ import androidx.navigation.fragment.NavHostFragment;
 import com.lunartag.app.R;
 import com.lunartag.app.databinding.FragmentSettingsBinding;
 import com.lunartag.app.services.OverlayService;
+import com.lunartag.app.utils.AdManager;
 
 import java.util.Calendar;
 import java.util.Locale;
@@ -42,6 +43,9 @@ public class SettingsFragment extends Fragment {
     private FragmentSettingsBinding binding;
     private SharedPreferences settingsPrefs;
     private SharedPreferences accessPrefs;
+    
+    // *** NEW: Ad Manager ***
+    private AdManager adManager;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -54,6 +58,9 @@ public class SettingsFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // Initialize AdManager
+        adManager = new AdManager(requireContext());
 
         loadSettings();
         setupClickListeners();
@@ -230,11 +237,41 @@ public class SettingsFragment extends Fragment {
 
         if (isAdminModeEnabled) {
             binding.buttonAdminScheduleEditor.setVisibility(View.VISIBLE);
+            
+            // *** MODIFIED CLICK LISTENER FOR ADS ***
             binding.buttonAdminScheduleEditor.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    NavHostFragment.findNavController(SettingsFragment.this)
-                            .navigate(R.id.action_settings_to_schedule_editor);
+                    
+                    // 1. Check if Shift has ended (and reset if needed)
+                    adManager.checkShiftReset();
+                    
+                    // 2. Check Ad Level
+                    int level = adManager.getAdLevel();
+                    
+                    if (level > 0) {
+                        // Already Unlocked (Level 1, 2, or 3)
+                        NavHostFragment.findNavController(SettingsFragment.this)
+                                .navigate(R.id.action_settings_to_schedule_editor);
+                    } else {
+                        // Locked (Level 0) - Prompt for Ad #1
+                        Toast.makeText(getContext(), "Watch Ad to Unlock Scheduler (3 Credits)", Toast.LENGTH_SHORT).show();
+                        
+                        adManager.showRewardedAd(requireActivity(), new AdManager.OnAdRewardListener() {
+                            @Override
+                            public void onRewardEarned() {
+                                // Ad Success: Logic inside AdManager sets Level=1, Slots=3
+                                Toast.makeText(getContext(), "Unlocked! 3 Timestamps added.", Toast.LENGTH_LONG).show();
+                                NavHostFragment.findNavController(SettingsFragment.this)
+                                        .navigate(R.id.action_settings_to_schedule_editor);
+                            }
+
+                            @Override
+                            public void onAdFailed() {
+                                Toast.makeText(getContext(), "Ad Not Ready. Please wait a moment.", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }
                 }
             });
         } else {
