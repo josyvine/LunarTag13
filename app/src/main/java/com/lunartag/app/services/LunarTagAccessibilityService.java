@@ -127,9 +127,10 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // ====================================================================
         boolean isShareSheet = hasText(root, "Cancel") || pkgName.equals("android") || pkgName.contains("chooser");
 
-        // *** CHANGED: Do NOT reset memory here blindly. ***
-        // We only reset 'shareSheetClicked' when we successfully reach WhatsApp.
-        // This prevents double-clicking during transition flickering.
+        // Reset the local Share Sheet flag if we are NOT on the share sheet
+        if (!isShareSheet) {
+            shareSheetClicked = false;
+        }
 
         if (mode.equals("full") && isShareSheet && !pkgName.contains("whatsapp")) {
 
@@ -163,11 +164,6 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         // 4. WHATSAPP LOGIC (FLUID / INFINITE)
         // ====================================================================
         if (pkgName.contains("whatsapp")) {
-
-            // *** FIX: MEMORY RESET ***
-            // Now that we are safely inside WhatsApp, we reset the Share Sheet memory.
-            // This ensures it is ready for the NEXT job, but prevents double-clicking for THIS job.
-            shareSheetClicked = false;
 
             // CRITICAL GUARD: Robot only works if JOB_PENDING is true.
             if (prefs.getBoolean(KEY_JOB_PENDING, false)) {
@@ -230,43 +226,61 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     }
 
     // ====================================================================
-    // NEW LOGIC: OPTION B (COORDINATE SEQUENCES)
+    // NEW LOGIC: OPTION B (COORDINATE SEQUENCES) - FIXED
     // ====================================================================
     private void performCoordinateLogic(AccessibilityNodeInfo root, SharedPreferences prefs) {
 
         // --- SEQUENCE 1: GROUP SELECTION ---
         // Condition: We haven't clicked the group yet.
         if (!groupCoordinateClicked) {
-            int x = prefs.getInt(KEY_GROUP_X, 0);
-            int y = prefs.getInt(KEY_GROUP_Y, 0);
+            
+            // *** FIX APPLIED HERE: LOGIC FROM OLD FILE RESTORED ***
+            // We verify we are actually ON the Contact Selection screen before clicking.
+            String targetGroup = prefs.getString(KEY_TARGET_GROUP, "");
+            
+            boolean onContactScreen = hasText(root, "Frequently contacted") || 
+                                      hasText(root, "Recent chats") ||
+                                      hasText(root, "New group") ||
+                                      hasText(root, "My status") || 
+                                      (!targetGroup.isEmpty() && hasText(root, targetGroup));
 
-            if (x > 0 && y > 0) {
-                performBroadcastLog("📍 Coord Mode: Step 1 (Group). Clicking...");
-                executeCoordinateClick(x, y);
-                groupCoordinateClicked = true; // LOCK SEQUENCE 1
+            if (onContactScreen) {
+                int x = prefs.getInt(KEY_GROUP_X, 0);
+                int y = prefs.getInt(KEY_GROUP_Y, 0);
+
+                if (x > 0 && y > 0) {
+                    performBroadcastLog("📍 Coord Mode: Step 1 (Group). Clicking...");
+                    executeCoordinateClick(x, y);
+                    groupCoordinateClicked = true; // LOCK SEQUENCE 1
+                }
             }
             return;
         }
 
         // --- SEQUENCE 2: GREEN ARROW (Contact List Next) ---
         // Condition: Group is done, but Arrow not clicked.
-        // Screen Logic: We are on the same screen (Contact List). Wait for event.
         if (groupCoordinateClicked && !chatSendCoordinateClicked) {
 
-            int x = prefs.getInt(KEY_CHAT_X, 0);
-            int y = prefs.getInt(KEY_CHAT_Y, 0);
+            // Optional Safety: Check if at least some list item or button is present
+            // This prevents clicking on a blank black transition screen
+            boolean isSafeToClick = hasText(root, "Selected") || 
+                                    !root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/fab").isEmpty();
 
-            if (x > 0 && y > 0) {
-                performBroadcastLog("📍 Coord Mode: Step 2 (Next Arrow). Clicking...");
-                executeCoordinateClick(x, y);
-                chatSendCoordinateClicked = true; // LOCK SEQUENCE 2
+            if (isSafeToClick) {
+                int x = prefs.getInt(KEY_CHAT_X, 0);
+                int y = prefs.getInt(KEY_CHAT_Y, 0);
+
+                if (x > 0 && y > 0) {
+                    performBroadcastLog("📍 Coord Mode: Step 2 (Next Arrow). Clicking...");
+                    executeCoordinateClick(x, y);
+                    chatSendCoordinateClicked = true; // LOCK SEQUENCE 2
+                }
             }
             return;
         }
 
         // --- SEQUENCE 3: FINAL PREVIEW SEND ---
         // Condition: Arrow is done, but Final Send not clicked.
-        // Screen Check: Look for Caption Box or Filter/Crop/Send IDs to confirm we are on Preview.
         if (chatSendCoordinateClicked && !previewSendCoordinateClicked) {
 
             // Check if we are on preview screen (Caption box is usually present)
@@ -290,13 +304,12 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     // 1. Disable the Job Ticket
                     prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
 
-                    // 2. *** FIX: INSTANT MEMORY CLEANING ***
+                    // 2. INSTANT MEMORY CLEANING
                     // Reset all flags to FALSE immediately so we are ready for the next message.
                     groupCoordinateClicked = false;
                     chatSendCoordinateClicked = false;
                     previewSendCoordinateClicked = false;
-                    // Note: shareSheetClicked is reset at the top of the WhatsApp block now
-                    // ---------------------------------------
+                    shareSheetClicked = false;
 
                     new Handler(Looper.getMainLooper()).postDelayed(() -> 
                         Toast.makeText(getApplicationContext(), "🚀 SEQUENCE COMPLETE", Toast.LENGTH_SHORT).show(), 500);
