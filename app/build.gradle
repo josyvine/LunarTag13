@@ -65,7 +65,7 @@ dependencies {
     // Google Play Services for Location
     implementation 'com.google.android.gms:play-services-location:21.2.0'
 
-    // *** NEW: Google Mobile Ads SDK (AdMob) ***
+    // *** FIX: Google Mobile Ads SDK (AdMob) ***
     implementation 'com.google.android.gms:play-services-ads:23.0.0'
 
     // CameraX libraries
@@ -74,6 +74,9 @@ dependencies {
     implementation "androidx.camera:camera-camera2:${camerax_version}"
     implementation "androidx.camera:camera-lifecycle:${camerax_version}"
     implementation "androidx.camera:camera-view:${camerax_version}"
+
+    // *** FIX: Guava (Required for ListenableFuture build error) ***
+    implementation 'com.google.guava:guava:31.1-android'
 
     // Map library (OSMDroid)
     implementation 'org.osmdroid:osmdroid-android:6.1.18'
