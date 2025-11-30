@@ -123,9 +123,14 @@ public class LunarTagAccessibilityService extends AccessibilityService {
         if (isClickingPending) return;
 
         // ====================================================================
-        // 3. SHARE SHEET LOGIC (Coordinate Click - One Shot)
+        // 3. SHARE SHEET LOGIC (STRICT FIX APPLIED)
         // ====================================================================
-        boolean isShareSheet = hasText(root, "Cancel") || pkgName.equals("android") || pkgName.contains("chooser");
+        
+        // FIX: We changed || (OR) to && (AND).
+        // It must be "android" package AND have "Cancel" text.
+        // This prevents clicking on Settings, Volume, or Notifications.
+        boolean isShareSheet = (pkgName.equals("android") && hasText(root, "Cancel")) || 
+                               pkgName.contains("chooser");
 
         // Reset the local Share Sheet flag if we are NOT on the share sheet
         if (!isShareSheet) {
@@ -226,61 +231,43 @@ public class LunarTagAccessibilityService extends AccessibilityService {
     }
 
     // ====================================================================
-    // NEW LOGIC: OPTION B (COORDINATE SEQUENCES) - FIXED
+    // NEW LOGIC: OPTION B (COORDINATE SEQUENCES)
     // ====================================================================
     private void performCoordinateLogic(AccessibilityNodeInfo root, SharedPreferences prefs) {
 
         // --- SEQUENCE 1: GROUP SELECTION ---
         // Condition: We haven't clicked the group yet.
         if (!groupCoordinateClicked) {
-            
-            // *** FIX APPLIED HERE: LOGIC FROM OLD FILE RESTORED ***
-            // We verify we are actually ON the Contact Selection screen before clicking.
-            String targetGroup = prefs.getString(KEY_TARGET_GROUP, "");
-            
-            boolean onContactScreen = hasText(root, "Frequently contacted") || 
-                                      hasText(root, "Recent chats") ||
-                                      hasText(root, "New group") ||
-                                      hasText(root, "My status") || 
-                                      (!targetGroup.isEmpty() && hasText(root, targetGroup));
+            int x = prefs.getInt(KEY_GROUP_X, 0);
+            int y = prefs.getInt(KEY_GROUP_Y, 0);
 
-            if (onContactScreen) {
-                int x = prefs.getInt(KEY_GROUP_X, 0);
-                int y = prefs.getInt(KEY_GROUP_Y, 0);
-
-                if (x > 0 && y > 0) {
-                    performBroadcastLog("📍 Coord Mode: Step 1 (Group). Clicking...");
-                    executeCoordinateClick(x, y);
-                    groupCoordinateClicked = true; // LOCK SEQUENCE 1
-                }
+            if (x > 0 && y > 0) {
+                performBroadcastLog("📍 Coord Mode: Step 1 (Group). Clicking...");
+                executeCoordinateClick(x, y);
+                groupCoordinateClicked = true; // LOCK SEQUENCE 1
             }
             return;
         }
 
         // --- SEQUENCE 2: GREEN ARROW (Contact List Next) ---
         // Condition: Group is done, but Arrow not clicked.
+        // Screen Logic: We are on the same screen (Contact List). Wait for event.
         if (groupCoordinateClicked && !chatSendCoordinateClicked) {
 
-            // Optional Safety: Check if at least some list item or button is present
-            // This prevents clicking on a blank black transition screen
-            boolean isSafeToClick = hasText(root, "Selected") || 
-                                    !root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/fab").isEmpty();
+            int x = prefs.getInt(KEY_CHAT_X, 0);
+            int y = prefs.getInt(KEY_CHAT_Y, 0);
 
-            if (isSafeToClick) {
-                int x = prefs.getInt(KEY_CHAT_X, 0);
-                int y = prefs.getInt(KEY_CHAT_Y, 0);
-
-                if (x > 0 && y > 0) {
-                    performBroadcastLog("📍 Coord Mode: Step 2 (Next Arrow). Clicking...");
-                    executeCoordinateClick(x, y);
-                    chatSendCoordinateClicked = true; // LOCK SEQUENCE 2
-                }
+            if (x > 0 && y > 0) {
+                performBroadcastLog("📍 Coord Mode: Step 2 (Next Arrow). Clicking...");
+                executeCoordinateClick(x, y);
+                chatSendCoordinateClicked = true; // LOCK SEQUENCE 2
             }
             return;
         }
 
         // --- SEQUENCE 3: FINAL PREVIEW SEND ---
         // Condition: Arrow is done, but Final Send not clicked.
+        // Screen Check: Look for Caption Box or Filter/Crop/Send IDs to confirm we are on Preview.
         if (chatSendCoordinateClicked && !previewSendCoordinateClicked) {
 
             // Check if we are on preview screen (Caption box is usually present)
@@ -304,12 +291,13 @@ public class LunarTagAccessibilityService extends AccessibilityService {
                     // 1. Disable the Job Ticket
                     prefs.edit().putBoolean(KEY_JOB_PENDING, false).apply();
 
-                    // 2. INSTANT MEMORY CLEANING
+                    // 2. *** FIX: INSTANT MEMORY CLEANING ***
                     // Reset all flags to FALSE immediately so we are ready for the next message.
                     groupCoordinateClicked = false;
                     chatSendCoordinateClicked = false;
                     previewSendCoordinateClicked = false;
                     shareSheetClicked = false;
+                    // ---------------------------------------
 
                     new Handler(Looper.getMainLooper()).postDelayed(() -> 
                         Toast.makeText(getApplicationContext(), "🚀 SEQUENCE COMPLETE", Toast.LENGTH_SHORT).show(), 500);
