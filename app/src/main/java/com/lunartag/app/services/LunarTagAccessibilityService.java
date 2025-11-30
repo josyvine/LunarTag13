@@ -153,6 +153,14 @@ public class LunarTagAccessibilityService extends AccessibilityService {
 
                     // Mark as clicked so we don't loop/flash while the sheet is closing
                     shareSheetClicked = true;
+
+                    // >>> CRITICAL FIX: RESET SEQUENCE MEMORY HERE <<<
+                    // This ensures the sequence starts fresh (Step 1) every time we come from Share Sheet.
+                    groupCoordinateClicked = false;
+                    chatSendCoordinateClicked = false;
+                    previewSendCoordinateClicked = false;
+                    // >>> END FIX <<<
+
                     isClickingPending = true;
 
                     // Delay 500ms for animation
