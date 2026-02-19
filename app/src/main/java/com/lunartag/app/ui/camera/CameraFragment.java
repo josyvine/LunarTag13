@@ -366,10 +366,9 @@ public class CameraFragment extends Fragment {
                     savePhotoToDatabase(absolutePath, realTime, assignedTime, location);
                     logToScreen("System: Database Updated.");
                     
-                    // --- ENHANCEMENT: SILENT CLIPBOARD COPY ---
+                    // --- ENHANCEMENT: SILENT CLIPBOARD COPY (FIXED AUTHORITY) ---
                     copyImageToClipboard(absolutePath);
-                    logToScreen("System: Image copied to Clipboard.");
-                    // ------------------------------------------
+                    // --------------------------------------------------
 
                     new android.os.Handler(Looper.getMainLooper()).post(() -> {
                         Toast.makeText(getContext(), "Photo Saved!", Toast.LENGTH_SHORT).show();
@@ -534,13 +533,25 @@ public class CameraFragment extends Fragment {
         }
     }
 
+    // --- FIX: ADDRESS NAME LOGIC ---
+    // Forces system to give Place Name (Locality) if it tries to give a Plus Code number.
     private String getAddressFromLocation(Location location) {
         if (location == null) return "Location Unknown";
         try {
-            Geocoder geocoder = new Geocoder(getContext(), Locale.getDefault());
+            // FIX 1: Use Locale.ENGLISH to prevent character issues
+            Geocoder geocoder = new Geocoder(getContext(), Locale.ENGLISH);
             List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
             if (addresses != null && !addresses.isEmpty()) {
-                return addresses.get(0).getAddressLine(0);
+                Address addr = addresses.get(0);
+                String line0 = addr.getAddressLine(0);
+
+                // FIX 2: Check if Google gave us a Plus Code (numbers + sign)
+                // If so, return City + State instead.
+                if (line0 != null && line0.contains("+") && addr.getLocality() != null) {
+                    return addr.getLocality() + ", " + addr.getAdminArea();
+                }
+
+                return line0;
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -560,7 +571,7 @@ public class CameraFragment extends Fragment {
 
     /**
      * SILENT CLIPBOARD COPY METHOD
-     * Handles both SAF URIs (Custom Folder) and Internal File Paths.
+     * FIX: Uses correct 'fileprovider' authority matching your original manifest.
      */
     private void copyImageToClipboard(String absolutePath) {
         Context context = getContext();
@@ -574,8 +585,8 @@ public class CameraFragment extends Fragment {
             } else {
                 // 2. Standard Internal File: Needs FileProvider
                 File file = new File(absolutePath);
-                // Authority must match the one added in AndroidManifest
-                String authority = context.getPackageName() + ".provider"; 
+                // FIX: Matches your original manifest authority exactly
+                String authority = context.getPackageName() + ".fileprovider"; 
                 uri = FileProvider.getUriForFile(context, authority, file);
             }
 
@@ -584,6 +595,7 @@ public class CameraFragment extends Fragment {
             if (clipboard != null) {
                 ClipData clip = ClipData.newUri(context.getContentResolver(), "Captured Image", uri);
                 clipboard.setPrimaryClip(clip);
+                logToScreen("System: Image copied to Clipboard.");
             }
         } catch (Exception e) {
             logToScreen("Clipboard Error: " + e.getMessage());
