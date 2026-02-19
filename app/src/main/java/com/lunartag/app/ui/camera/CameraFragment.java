@@ -365,10 +365,10 @@ public class CameraFragment extends Fragment {
                     logToScreen("SUCCESS: File Written. (" + absolutePath + ")");
                     savePhotoToDatabase(absolutePath, realTime, assignedTime, location);
                     logToScreen("System: Database Updated.");
-                    
-                    // --- ENHANCEMENT: SILENT CLIPBOARD COPY (FIXED AUTHORITY) ---
+
+                    // --- ENHANCEMENT: COPY TO CLIPBOARD ---
                     copyImageToClipboard(absolutePath);
-                    // --------------------------------------------------
+                    // --------------------------------------
 
                     new android.os.Handler(Looper.getMainLooper()).post(() -> {
                         Toast.makeText(getContext(), "Photo Saved!", Toast.LENGTH_SHORT).show();
@@ -533,25 +533,13 @@ public class CameraFragment extends Fragment {
         }
     }
 
-    // --- FIX: ADDRESS NAME LOGIC ---
-    // Forces system to give Place Name (Locality) if it tries to give a Plus Code number.
     private String getAddressFromLocation(Location location) {
         if (location == null) return "Location Unknown";
         try {
-            // FIX 1: Use Locale.ENGLISH to prevent character issues
-            Geocoder geocoder = new Geocoder(getContext(), Locale.ENGLISH);
+            Geocoder geocoder = new Geocoder(getContext(), Locale.getDefault());
             List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
             if (addresses != null && !addresses.isEmpty()) {
-                Address addr = addresses.get(0);
-                String line0 = addr.getAddressLine(0);
-
-                // FIX 2: Check if Google gave us a Plus Code (numbers + sign)
-                // If so, return City + State instead.
-                if (line0 != null && line0.contains("+") && addr.getLocality() != null) {
-                    return addr.getLocality() + ", " + addr.getAdminArea();
-                }
-
-                return line0;
+                return addresses.get(0).getAddressLine(0);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -571,7 +559,7 @@ public class CameraFragment extends Fragment {
 
     /**
      * SILENT CLIPBOARD COPY METHOD
-     * FIX: Uses correct 'fileprovider' authority matching your original manifest.
+     * Uses the correct existing fileprovider to prevent crashes.
      */
     private void copyImageToClipboard(String absolutePath) {
         Context context = getContext();
@@ -585,7 +573,7 @@ public class CameraFragment extends Fragment {
             } else {
                 // 2. Standard Internal File: Needs FileProvider
                 File file = new File(absolutePath);
-                // FIX: Matches your original manifest authority exactly
+                // FIX: Use '.fileprovider' to match original Manifest
                 String authority = context.getPackageName() + ".fileprovider"; 
                 uri = FileProvider.getUriForFile(context, authority, file);
             }
