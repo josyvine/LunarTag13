@@ -3,6 +3,8 @@ package com.lunartag.app.ui.camera;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -37,6 +39,7 @@ import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
 
 import com.google.common.util.concurrent.ListenableFuture;
@@ -362,6 +365,11 @@ public class CameraFragment extends Fragment {
                     logToScreen("SUCCESS: File Written. (" + absolutePath + ")");
                     savePhotoToDatabase(absolutePath, realTime, assignedTime, location);
                     logToScreen("System: Database Updated.");
+                    
+                    // --- ENHANCEMENT: SILENT CLIPBOARD COPY ---
+                    copyImageToClipboard(absolutePath);
+                    logToScreen("System: Image copied to Clipboard.");
+                    // ------------------------------------------
 
                     new android.os.Handler(Looper.getMainLooper()).post(() -> {
                         Toast.makeText(getContext(), "Photo Saved!", Toast.LENGTH_SHORT).show();
@@ -548,6 +556,39 @@ public class CameraFragment extends Fragment {
             }
         }
         return true;
+    }
+
+    /**
+     * SILENT CLIPBOARD COPY METHOD
+     * Handles both SAF URIs (Custom Folder) and Internal File Paths.
+     */
+    private void copyImageToClipboard(String absolutePath) {
+        Context context = getContext();
+        if (context == null || absolutePath == null) return;
+
+        try {
+            Uri uri;
+            // 1. Check if path is already a Content URI (from StorageUtils / SAF)
+            if (absolutePath.startsWith("content://")) {
+                uri = Uri.parse(absolutePath);
+            } else {
+                // 2. Standard Internal File: Needs FileProvider
+                File file = new File(absolutePath);
+                // Authority must match the one added in AndroidManifest
+                String authority = context.getPackageName() + ".provider"; 
+                uri = FileProvider.getUriForFile(context, authority, file);
+            }
+
+            // 3. Set to Clipboard
+            ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                ClipData clip = ClipData.newUri(context.getContentResolver(), "Captured Image", uri);
+                clipboard.setPrimaryClip(clip);
+            }
+        } catch (Exception e) {
+            logToScreen("Clipboard Error: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     @Override
