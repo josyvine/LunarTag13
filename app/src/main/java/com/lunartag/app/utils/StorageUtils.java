@@ -86,9 +86,6 @@ public class StorageUtils {
     /**
      * Step 3: The Heavy Lifting. Save the actual photo into that specific folder.
      * Returns the absolute URI string on success, or null on failure.
-     * 
-     * NOTE: This returns a 'content://' URI string which is required for the 
-     * Silent Clipboard Copy feature to work with custom folders.
      */
     @Nullable
     public static String saveImageToCustomFolder(Context context, Bitmap bitmap, String filename) {
@@ -123,8 +120,7 @@ public class StorageUtils {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
             out.flush();
             
-            // Return the usable URI (content://...)
-            // This is critical for the Clipboard logic to work without FileProvider
+            // Return the usable URI
             return newFile.getUri().toString();
             
         } catch (Exception e) {
