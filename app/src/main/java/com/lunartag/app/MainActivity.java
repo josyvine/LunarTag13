@@ -49,7 +49,7 @@ import java.util.Map;
 /**
  * The main screen of the application.
  * UPDATED: Handles centralized logging, blinking notification icon, AdMob Banner, 
- * Google Play In-App Updates, and Notification Permissions.
+ * Google Play In-App Updates, and Notification Permissions for 9 horizontal menu items.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -332,27 +332,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Reset after 500ms
         uiHandler.postDelayed(() -> {
-            // Only reset if Logs is NOT the currently active tab
-            // If it IS active, updateIconVisuals handles the color
-            // For simplicity, we reset to default or active color logic here
-            // But to keep visual stability, we just reset to the appropriate state:
-
-            // Check if logs is currently selected based on icon color or logic
-            // A simple reset to "inactive" default is safe, the user will tap if they want to see it.
-            // Or better, check logic:
-
-            // If we are ON the logs screen, keep it Primary Color. If not, reset to Default.
-            // Since we don't easily track current Fragment ID here without complexity, 
-            // we will trigger a visual update based on the view state.
-
-            // Simple approach: Reset to default gray. 
-            // If user is ON the tab, they will tap or we can leave it gray until next tap.
-            // However, to look professional, let's just reset to default gray.
+            // Check current active state of the log icon
             binding.navLogs.setColorFilter(defaultColor, PorterDuff.Mode.SRC_IN);
-
-            // Re-apply active state if it was active (Optional refinement)
-            // We can check if the current navigation destination is logs, but for now, simple blink is fine.
-
         }, 500);
     }
 
@@ -367,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
         binding.navApps.setColorFilter(inactiveColor);
         binding.navHelp.setColorFilter(inactiveColor);
         binding.navContact.setColorFilter(inactiveColor);
-        binding.navLogs.setColorFilter(inactiveColor); // Reset Logs
+        binding.navLogs.setColorFilter(inactiveColor);
         binding.navSettings.setColorFilter(inactiveColor);
 
         if (activeView instanceof ImageView) {
