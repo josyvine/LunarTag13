@@ -21,7 +21,7 @@ import java.util.Hashtable;
 
 /**
  * A utility class with static methods for rendering the watermark onto a photo.
- * UPDATED: Added QR Code generation and rendering logic.
+ * UPDATED: Optimized layout for vertical centering and larger QR code.
  */
 public class WatermarkUtils {
 
@@ -66,20 +66,26 @@ public class WatermarkUtils {
 
         // --- 3. Calculate Dimensions ---
         float textHeight = textPaint.descent() - textPaint.ascent();
+        float lineSpacing = 10f;
         
         // Height calculation:
-        // We ensure the block grows based on the number of lines provided (important for manual mode).
-        // Added extra padding (60 instead of 40) to ensure the header branding and long addresses 
-        // have enough breathing room and do not truncate at the bottom.
-        float blockHeight = (textHeight * lines.length) + (lines.length * 12) + 60;
+        // Precise calculation of text block height to avoid empty space
+        float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
+        
+        // Base block height with 30px padding top and bottom
+        float blockHeight = totalTextHeight + 60;
 
-        // NEW: Adjust block height if QR code is enabled to prevent clipping
+        // NEW: Adjust block height if QR code is enabled
+        // We use 200 for the QR size + space for the app logo
         if (showQr) {
-            blockHeight += 120; // Add space for the QR code bitmap
+            float qrSideHeight = (width * 0.08f) + 200 + 40; // Logo size + QR size + padding
+            if (qrSideHeight > blockHeight) {
+                blockHeight = qrSideHeight;
+            }
         }
 
         // Ensure block is tall enough for the map if map exists
-        if (mapBitmap != null && mapBitmap.getHeight() + 20 > blockHeight) {
+        if (mapBitmap != null && mapBitmap.getHeight() + 40 > blockHeight) {
             blockHeight = mapBitmap.getHeight() + 40;
         }
 
@@ -91,7 +97,7 @@ public class WatermarkUtils {
 
         // --- 5. Draw Map Bitmap (if provided) ---
         float mapLeft = 20;
-        float mapTop = watermarkTop + 20;
+        float mapTop = watermarkTop + (blockHeight - (mapBitmap != null ? mapBitmap.getHeight() : 0)) / 2f;
         if (mapBitmap != null) {
             canvas.drawBitmap(mapBitmap, mapLeft, mapTop, null);
         }
@@ -107,19 +113,20 @@ public class WatermarkUtils {
         int targetLogoSize = 0;
 
         if (logo != null) {
-            targetLogoSize = (int) (width * 0.08); 
-            if (targetLogoSize < 50) targetLogoSize = 50; 
+            targetLogoSize = (int) (width * 0.09); // Increased logo size slightly
+            if (targetLogoSize < 60) targetLogoSize = 60; 
 
             Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, targetLogoSize, targetLogoSize, true);
 
             logoX = width - targetLogoSize - 30; 
-            logoY = watermarkTop + 20; 
+            logoY = watermarkTop + 25; // Constant padding from top of bar
 
             canvas.drawBitmap(scaledLogo, logoX, logoY, null);
 
             String appName = "Lunar Tag";
             float textWidth = brandPaint.measureText(appName);
             float brandTextX = logoX - textWidth - 20;
+            // Center text vertically relative to logo
             float brandTextY = logoY + (targetLogoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
 
             canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
@@ -128,9 +135,9 @@ public class WatermarkUtils {
             if (showQr && lat != null && lon != null) {
                 Bitmap qrBitmap = generateQrCodeBitmap(lat, lon);
                 if (qrBitmap != null) {
-                    // Position QR directly below the logo
+                    // Position QR directly below the logo with a small gap
                     float qrX = logoX + (targetLogoSize / 2f) - (qrBitmap.getWidth() / 2f);
-                    float qrY = logoY + targetLogoSize + 15; // 15px gap below logo
+                    float qrY = logoY + targetLogoSize + 10; 
                     canvas.drawBitmap(qrBitmap, qrX, qrY, null);
                 }
             }
@@ -141,10 +148,11 @@ public class WatermarkUtils {
         
         float maxAllowedWidth = (width - 60);
         if (logo != null) {
-            maxAllowedWidth = (width - (width * 0.25f)); 
+            maxAllowedWidth = (width - (width * 0.30f)); // More room for larger QR
         }
 
-        float currentY = watermarkTop + textHeight + 40; 
+        // Center the text block vertically within the blockHeight
+        float currentY = watermarkTop + ((blockHeight - totalTextHeight) / 2f) - textPaint.ascent();
 
         for (String line : lines) {
             if (line != null) {
@@ -159,20 +167,21 @@ public class WatermarkUtils {
                     canvas.drawText(line, textLeft, currentY, textPaint);
                 }
                 
-                currentY += (textHeight + 10); 
+                currentY += (textHeight + lineSpacing); 
             }
         }
     }
 
     /**
      * NEW Helper: Generates a QR Code bitmap targeting a Google Maps URL.
+     * UPDATED: Increased size to 200px for legibility.
      */
     private static Bitmap generateQrCodeBitmap(String lat, String lon) {
         try {
             // URL format that opens directly in Google Maps app or browser
             String uri = "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
             
-            int size = 120; // Tiny size for the watermark block
+            int size = 200; // Increased from 120 to 200
             Hashtable<EncodeHintType, Object> hints = new Hashtable<>();
             hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
             hints.put(EncodeHintType.MARGIN, 1); // Minimum white border
@@ -185,7 +194,7 @@ public class WatermarkUtils {
             for (int y = 0; y < height; y++) {
                 int offset = y * width;
                 for (int x = 0; x < width; x++) {
-                    // Use White for QR modules and Transparent/Dark for background
+                    // Use White for QR modules and Transparent for background
                     pixels[offset + x] = bitMatrix.get(x, y) ? Color.WHITE : Color.TRANSPARENT;
                 }
             }
