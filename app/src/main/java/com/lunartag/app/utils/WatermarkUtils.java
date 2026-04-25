@@ -55,8 +55,12 @@ public class WatermarkUtils {
 
         // --- 3. Calculate Dimensions ---
         float textHeight = textPaint.descent() - textPaint.ascent();
-        // Height is roughly text lines + padding. Added extra padding for the Logo header.
-        float blockHeight = (textHeight * lines.length) + (lines.length * 12) + 40;
+        
+        // Height calculation:
+        // We ensure the block grows based on the number of lines provided (important for manual mode).
+        // Added extra padding (60 instead of 40) to ensure the header branding and long addresses 
+        // have enough breathing room and do not truncate at the bottom.
+        float blockHeight = (textHeight * lines.length) + (lines.length * 12) + 60;
 
         // Ensure block is tall enough for the map if map exists
         if (mapBitmap != null && mapBitmap.getHeight() + 20 > blockHeight) {
@@ -110,12 +114,32 @@ public class WatermarkUtils {
 
         // --- 7. Draw Main Text Lines ---
         float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 50 : 40;
+        
+        // To prevent text from "Exceeding" the right boundary, we calculate the max width
+        float maxAllowedWidth = (width - 60);
+        if (logo != null) {
+            // If logo is present, we provide even more padding to avoid overlapping the branding
+            maxAllowedWidth = (width - (width * 0.25f)); 
+        }
+
         // Start text lower to account for the Branding Header we just drew
         float currentY = watermarkTop + textHeight + 40; 
 
         for (String line : lines) {
             if (line != null) {
-                canvas.drawText(line, textLeft, currentY, textPaint);
+                // To avoid truncation of long addresses, we check the width.
+                // If it's too long, we dynamically scale the individual line down slightly.
+                float lineWidth = textPaint.measureText(line);
+                if (lineWidth > maxAllowedWidth) {
+                    float originalTextSize = textPaint.getTextSize();
+                    float scaleFactor = maxAllowedWidth / lineWidth;
+                    textPaint.setTextSize(originalTextSize * scaleFactor);
+                    canvas.drawText(line, textLeft, currentY, textPaint);
+                    textPaint.setTextSize(originalTextSize); // Restore for next line
+                } else {
+                    canvas.drawText(line, textLeft, currentY, textPaint);
+                }
+                
                 currentY += (textHeight + 10); // Add line spacing
             }
         }
