@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.DialogFragment;
 
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.textfield.TextInputEditText;
 import com.lunartag.app.R;
 
@@ -33,8 +34,12 @@ public class ManualLocationDialog extends DialogFragment {
     public static final String KEY_MANUAL_LON = "manual_lon";
     public static final String KEY_MANUAL_STATE = "manual_state";
     public static final String KEY_MANUAL_COUNTRY = "manual_country";
+    
+    // NEW: Key for the QR Code toggle
+    public static final String KEY_MANUAL_QR_ENABLED = "manual_qr_enabled";
 
     private TextInputEditText editLoc1, editLandmark, editPincode, editLat, editLon, editState, editCountry;
+    private SwitchMaterial switchQr; // NEW: View reference for the QR toggle
     private SharedPreferences prefs;
 
     @Override
@@ -59,6 +64,9 @@ public class ManualLocationDialog extends DialogFragment {
         editLon = view.findViewById(R.id.edit_manual_lon);
         editState = view.findViewById(R.id.edit_manual_state);
         editCountry = view.findViewById(R.id.edit_manual_country);
+        
+        // NEW: Initialize the QR Switch view
+        switchQr = view.findViewById(R.id.switch_manual_qr);
 
         // Setup Toolbar
         toolbar.setNavigationOnClickListener(v -> dismiss());
@@ -82,6 +90,11 @@ public class ManualLocationDialog extends DialogFragment {
         editLon.setText(prefs.getString(KEY_MANUAL_LON, ""));
         editState.setText(prefs.getString(KEY_MANUAL_STATE, ""));
         editCountry.setText(prefs.getString(KEY_MANUAL_COUNTRY, ""));
+        
+        // NEW: Load the saved state of the QR toggle (defaults to false)
+        if (switchQr != null) {
+            switchQr.setChecked(prefs.getBoolean(KEY_MANUAL_QR_ENABLED, false));
+        }
     }
 
     private void saveManualData() {
@@ -107,6 +120,7 @@ public class ManualLocationDialog extends DialogFragment {
                 .putString(KEY_MANUAL_LON, lon)
                 .putString(KEY_MANUAL_STATE, state)
                 .putString(KEY_MANUAL_COUNTRY, country)
+                .putBoolean(KEY_MANUAL_QR_ENABLED, switchQr.isChecked()) // NEW: Save toggle state
                 .apply();
 
         Toast.makeText(getContext(), "Manual Location Overridden", Toast.LENGTH_SHORT).show();
