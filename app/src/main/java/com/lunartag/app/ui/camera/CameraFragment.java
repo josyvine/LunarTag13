@@ -297,6 +297,9 @@ public class CameraFragment extends Fragment {
             logToScreen("System: Checking Location mode...");
             SharedPreferences settingsPrefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
             boolean isManualMode = settingsPrefs.getBoolean(ManualLocationDialog.KEY_LOCATION_MODE_MANUAL, false);
+            
+            // NEW: Check if QR Printing is enabled
+            boolean isQrEnabled = settingsPrefs.getBoolean(ManualLocationDialog.KEY_MANUAL_QR_ENABLED, false);
 
             Location sensorLoc = locationProvider.getCurrentLocationFast();
             double finalLat = 0.0;
@@ -304,24 +307,28 @@ public class CameraFragment extends Fragment {
             String finalAddress;
             String finalManualSubLine = "";
             String gpsString;
+            
+            // Coordinates to be used for the QR link
+            String qrLat;
+            String qrLon;
 
             if (isManualMode) {
                 logToScreen("System: Manual Override detected.");
                 // Construct address from popup fields
                 finalAddress = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address") + 
                                " (" + settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LANDMARK, "") + ")";
-                
+
                 finalManualSubLine = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_STATE, "") + ", " +
                                      settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_COUNTRY, "") + " - " +
                                      settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_PINCODE, "");
 
-                String mLat = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LAT, "0.0");
-                String mLon = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LON, "0.0");
-                gpsString = "Lat: " + mLat + " Lon: " + mLon;
-                
+                qrLat = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LAT, "0.0");
+                qrLon = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LON, "0.0");
+                gpsString = "Lat: " + qrLat + " Lon: " + qrLon;
+
                 try {
-                    finalLat = Double.parseDouble(mLat);
-                    finalLon = Double.parseDouble(mLon);
+                    finalLat = Double.parseDouble(qrLat);
+                    finalLon = Double.parseDouble(qrLon);
                 } catch (Exception e) {
                     logToScreen("Error: Manual Lat/Lon parse failed.");
                 }
@@ -340,6 +347,8 @@ public class CameraFragment extends Fragment {
                 }
 
                 finalAddress = getAddressFromLocation(location);
+                qrLat = String.valueOf(finalLat);
+                qrLon = String.valueOf(finalLon);
                 gpsString = "Lat: " + finalLat + " Lon: " + finalLon;
             }
 
@@ -377,8 +386,8 @@ public class CameraFragment extends Fragment {
 
                 logToScreen("System: Applying Watermark...");
 
-                // --- CRITICAL CHANGE: Pass 'getContext()' to load the LOGO ---
-                WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines);
+                // --- UPDATED: Pass QR data to Watermark Utility ---
+                WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines, qrLat, qrLon, isQrEnabled);
                 // -------------------------------------------------------------
 
                 // --- CRITICAL CHANGE: STORAGE LOGIC ---
@@ -403,7 +412,7 @@ public class CameraFragment extends Fragment {
 
                 if (absolutePath != null) {
                     logToScreen("SUCCESS: File Written. (" + absolutePath + ")");
-                    
+
                     // Create location object for Database
                     Location dbLocation = new Location("temp");
                     dbLocation.setLatitude(finalLat);
