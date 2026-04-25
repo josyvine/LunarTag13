@@ -101,6 +101,9 @@ dependencies {
     // Scheduling library (WorkManager)
     implementation 'androidx.work:work-runtime:2.9.0'
 
+    // *** NEW: QR Code Generation Library ***
+    implementation 'com.google.zxing:core:3.5.3'
+
     // Testing Libraries
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
