@@ -157,13 +157,13 @@ public class MainActivity extends AppCompatActivity {
 
         NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.nav_host_fragment_activity_main);
-        
+
         if (navHostFragment != null) {
             navController = navHostFragment.getNavController();
         }
 
         // --- NAVIGATION LOGIC ---
-        
+
         binding.navDashboard.setOnClickListener(v -> {
             navController.navigate(R.id.navigation_dashboard);
             updateIconVisuals(binding.navDashboard);
@@ -235,7 +235,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        
+
         // --- IN-APP UPDATE RESUME CHECK ---
         // If an IMMEDIATE update was started but the app was backgrounded,
         // we need to resume the update view when the app returns to foreground.
@@ -299,7 +299,7 @@ public class MainActivity extends AppCompatActivity {
         appUpdateInfoTask.addOnSuccessListener(appUpdateInfo -> {
             if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
                     && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
-                
+
                 try {
                     appUpdateManager.startUpdateFlowForResult(
                             appUpdateInfo,
@@ -336,23 +336,23 @@ public class MainActivity extends AppCompatActivity {
             // If it IS active, updateIconVisuals handles the color
             // For simplicity, we reset to default or active color logic here
             // But to keep visual stability, we just reset to the appropriate state:
-            
+
             // Check if logs is currently selected based on icon color or logic
             // A simple reset to "inactive" default is safe, the user will tap if they want to see it.
             // Or better, check logic:
-            
+
             // If we are ON the logs screen, keep it Primary Color. If not, reset to Default.
             // Since we don't easily track current Fragment ID here without complexity, 
             // we will trigger a visual update based on the view state.
-            
+
             // Simple approach: Reset to default gray. 
             // If user is ON the tab, they will tap or we can leave it gray until next tap.
             // However, to look professional, let's just reset to default gray.
             binding.navLogs.setColorFilter(defaultColor, PorterDuff.Mode.SRC_IN);
-            
+
             // Re-apply active state if it was active (Optional refinement)
             // We can check if the current navigation destination is logs, but for now, simple blink is fine.
-            
+
         }, 500);
     }
 
