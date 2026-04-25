@@ -3,22 +3,47 @@
 
     <item
         android:id="@+id/navigation_dashboard"
-        android:icon="@drawable/ic_dashboard"
+        android:icon="@drawable/badge_24px"
         android:title="@string/title_dashboard" />
 
     <item
         android:id="@+id/navigation_camera"
-        android:icon="@drawable/ic_camera"
+        android:icon="@drawable/camera_24px"
         android:title="@string/title_camera" />
 
     <item
         android:id="@+id/navigation_gallery"
-        android:icon="@drawable/ic_gallery"
+        android:icon="@drawable/photo_library_24px"
         android:title="@string/title_gallery" />
 
     <item
+        android:id="@+id/navigation_robot"
+        android:icon="@drawable/robot_24px"
+        android:title="Robot" />
+
+    <item
+        android:id="@+id/navigation_apps"
+        android:icon="@drawable/app_registration_24px"
+        android:title="Apps" />
+
+    <item
+        android:id="@+id/navigation_help"
+        android:icon="@drawable/help_center_24px"
+        android:title="Help" />
+
+    <item
+        android:id="@+id/navigation_contact"
+        android:icon="@drawable/contact_support_24px"
+        android:title="Contact" />
+
+    <item
+        android:id="@+id/navigation_logs"
+        android:icon="@drawable/terminal_2_24px"
+        android:title="Logs" />
+
+    <item
         android:id="@+id/navigation_settings"
-        android:icon="@drawable/ic_settings"
+        android:icon="@drawable/settings_24px"
         android:title="@string/title_settings" />
 
 </menu>
