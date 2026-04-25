@@ -80,4 +80,4 @@
         android:label="Schedule Editor"
         tools:layout="@layout/fragment_schedule_editor" />
 
-</navigation>
+</navigation> 
