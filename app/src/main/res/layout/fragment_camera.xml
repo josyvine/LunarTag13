@@ -104,13 +104,12 @@
                 android:background="@android:color/darker_gray"/>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- FOLDER BUTTON (New: Placed between Gallery and Capture) -->
-        <!-- Uses system 'save' icon as placeholder for 'Select Folder' -->
+        <!-- FOLDER BUTTON (Updated to use save_24px) -->
         <ImageButton
             android:id="@+id/button_save_folder"
             android:layout_width="50dp"
             android:layout_height="50dp"
-            android:src="@android:drawable/ic_menu_save"
+            android:src="@drawable/save_24px"
             android:scaleType="fitCenter"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Select Save Folder"
@@ -121,12 +120,12 @@
             app:layout_constraintBottom_toBottomOf="parent"/>
 
 
-        <!-- Shutter Button (Center) -->
+        <!-- Shutter Button (Updated to use capture_24px) -->
         <ImageButton
             android:id="@+id/button_capture"
             android:layout_width="80dp"
             android:layout_height="80dp"
-            android:src="@drawable/ic_shutter_button"
+            android:src="@drawable/capture_24px"
             android:scaleType="fitCenter"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/camera_capture_button_desc"
@@ -135,13 +134,12 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- GPS STATUS BUTTON (New: Placed between Capture and Flip) -->
-        <!-- Uses system 'mylocation' icon -->
+        <!-- GPS STATUS BUTTON (Updated to use my_location_24px) -->
         <ImageButton
             android:id="@+id/button_gps_status"
             android:layout_width="50dp"
             android:layout_height="50dp"
-            android:src="@android:drawable/ic_menu_mylocation"
+            android:src="@drawable/my_location_24px"
             android:scaleType="fitCenter"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Force GPS Refresh"
@@ -152,12 +150,12 @@
             app:layout_constraintBottom_toBottomOf="parent"/>
 
 
-        <!-- Flip Camera Button (Right Edge) -->
+        <!-- Flip Camera Button (Updated to use flip_camera_android_24px) -->
         <ImageButton
             android:id="@+id/button_flip_camera"
             android:layout_width="50dp"
             android:layout_height="50dp"
-            android:src="@android:drawable/ic_menu_rotate"
+            android:src="@drawable/flip_camera_android_24px"
             android:scaleType="fitCenter"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Flip Camera"
