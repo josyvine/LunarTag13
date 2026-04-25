@@ -47,6 +47,8 @@ import com.lunartag.app.data.AppDatabase;
 import com.lunartag.app.data.PhotoDao;
 import com.lunartag.app.databinding.FragmentCameraBinding;
 import com.lunartag.app.model.Photo;
+import com.lunartag.app.ui.admin.ManualLocationDialog;
+import com.lunartag.app.utils.GeocodingUtils;
 import com.lunartag.app.utils.ImageUtils;
 import com.lunartag.app.utils.LocationProvider;
 import com.lunartag.app.utils.Scheduler;
@@ -291,17 +293,55 @@ public class CameraFragment extends Fragment {
                 return;
             }
 
-            // --- CRITICAL CHANGE: INSTANT GPS ---
-            logToScreen("System: Grabbing Location immediately...");
-            // We DO NOT wait here. We grab the value from memory instantly.
-            Location location = locationProvider.getCurrentLocationFast();
+            // --- NEW: LOGIC TO DETECT LOCATION MODE ---
+            logToScreen("System: Checking Location mode...");
+            SharedPreferences settingsPrefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
+            boolean isManualMode = settingsPrefs.getBoolean(ManualLocationDialog.KEY_LOCATION_MODE_MANUAL, false);
 
-            if (location == null) {
-                logToScreen("WARNING: Location is NULL/Waiting. Saving anyway (Safety Mode).");
+            Location sensorLoc = locationProvider.getCurrentLocationFast();
+            double finalLat = 0.0;
+            double finalLon = 0.0;
+            String finalAddress;
+            String finalManualSubLine = "";
+            String gpsString;
+
+            if (isManualMode) {
+                logToScreen("System: Manual Override detected.");
+                // Construct address from popup fields
+                finalAddress = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address") + 
+                               " (" + settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LANDMARK, "") + ")";
+                
+                finalManualSubLine = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_STATE, "") + ", " +
+                                     settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_COUNTRY, "") + " - " +
+                                     settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_PINCODE, "");
+
+                String mLat = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LAT, "0.0");
+                String mLon = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LON, "0.0");
+                gpsString = "Lat: " + mLat + " Lon: " + mLon;
+                
+                try {
+                    finalLat = Double.parseDouble(mLat);
+                    finalLon = Double.parseDouble(mLon);
+                } catch (Exception e) {
+                    logToScreen("Error: Manual Lat/Lon parse failed.");
+                }
             } else {
-                logToScreen("System: Location Locked (Lat: " + location.getLatitude() + ")");
+                // --- CRITICAL CHANGE: INSTANT GPS ---
+                logToScreen("System: Grabbing Location immediately...");
+                // We DO NOT wait here. We grab the value from memory instantly.
+                Location location = sensorLoc;
+
+                if (location == null) {
+                    logToScreen("WARNING: Location is NULL/Waiting. Saving anyway (Safety Mode).");
+                } else {
+                    logToScreen("System: Location Locked (Lat: " + location.getLatitude() + ")");
+                    finalLat = location.getLatitude();
+                    finalLon = location.getLongitude();
+                }
+
+                finalAddress = getAddressFromLocation(location);
+                gpsString = "Lat: " + finalLat + " Lon: " + finalLon;
             }
-            // ------------------------------------
 
             try {
                 long realTime = System.currentTimeMillis();
@@ -313,30 +353,30 @@ public class CameraFragment extends Fragment {
                 }
 
                 // --- FIX: LOAD COMPANY NAME FROM SETTINGS ---
-                SharedPreferences settingsPrefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
                 String companyName = settingsPrefs.getString(KEY_COMPANY_NAME, "My Company"); 
                 // --------------------------------------------
-
-                String address = getAddressFromLocation(location);
 
                 // --- FIX: REMOVED ':ss' (SECONDS) FROM FORMAT ---
                 SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy hh:mm a", Locale.US);
                 // ------------------------------------------------
 
                 String timeString = sdf.format(new Date(assignedTime));
-                String gpsString = "Lat: " + (location != null ? location.getLatitude() : "0.0") +
-                        " Lon: " + (location != null ? location.getLongitude() : "0.0");
 
-                String[] watermarkLines = {
-                        "GPS Map Camera",
-                        companyName,
-                        address,
-                        gpsString,
-                        timeString
-                };
+                // Construct Watermark Lines Array dynamically to handle Manual mode sub-line
+                ArrayList<String> linesList = new ArrayList<>();
+                linesList.add("GPS Map Camera");
+                linesList.add(companyName);
+                linesList.add(finalAddress);
+                if (isManualMode && !finalManualSubLine.isEmpty()) {
+                    linesList.add(finalManualSubLine);
+                }
+                linesList.add(gpsString);
+                linesList.add(timeString);
+
+                String[] watermarkLines = linesList.toArray(new String[0]);
 
                 logToScreen("System: Applying Watermark...");
-                
+
                 // --- CRITICAL CHANGE: Pass 'getContext()' to load the LOGO ---
                 WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines);
                 // -------------------------------------------------------------
@@ -363,7 +403,16 @@ public class CameraFragment extends Fragment {
 
                 if (absolutePath != null) {
                     logToScreen("SUCCESS: File Written. (" + absolutePath + ")");
-                    savePhotoToDatabase(absolutePath, realTime, assignedTime, location);
+                    
+                    // Create location object for Database
+                    Location dbLocation = new Location("temp");
+                    dbLocation.setLatitude(finalLat);
+                    dbLocation.setLongitude(finalLon);
+                    if (!isManualMode && sensorLoc != null) {
+                        dbLocation.setAccuracy(sensorLoc.getAccuracy());
+                    }
+
+                    savePhotoToDatabase(absolutePath, realTime, assignedTime, dbLocation);
                     logToScreen("System: Database Updated.");
 
                     // --- ENHANCEMENT: COPY TO CLIPBOARD ---
@@ -534,17 +583,8 @@ public class CameraFragment extends Fragment {
     }
 
     private String getAddressFromLocation(Location location) {
-        if (location == null) return "Location Unknown";
-        try {
-            Geocoder geocoder = new Geocoder(getContext(), Locale.getDefault());
-            List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
-            if (addresses != null && !addresses.isEmpty()) {
-                return addresses.get(0).getAddressLine(0);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return "Address Not Found";
+        // --- UPDATED: NOW CALLS THE ROBUST GEOCODER UTILITY ---
+        return GeocodingUtils.getAddressWithFallback(requireContext(), location);
     }
 
     private boolean allPermissionsGranted() {
