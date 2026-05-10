@@ -243,7 +243,10 @@ public class CameraFragment extends Fragment {
                     
                     ManualLocation newWorkplace = new ManualLocation();
                     newWorkplace.locationName = details.city.isEmpty() ? "New Workplace" : details.city;
-                    newWorkplace.landmark = details.landmark;
+                    
+                    // FIX ISSUE #2: Clean brackets from landmark in auto-refresh logic
+                    newWorkplace.landmark = details.landmark.replace("(", "").replace(")", "");
+                    
                     newWorkplace.pincode = details.pincode;
                     newWorkplace.state = details.state;
                     newWorkplace.country = details.country;
@@ -262,9 +265,13 @@ public class CameraFragment extends Fragment {
 
     private void activateWorkplaceProfile(ManualLocation loc) {
         SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
+        
+        // FIX ISSUE #2: Ensure landmark is clean of brackets before activating profile
+        String cleanLandmark = loc.landmark.replace("(", "").replace(")", "");
+
         prefs.edit()
                 .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, loc.locationName)
-                .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, loc.landmark)
+                .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, cleanLandmark)
                 .putString(ManualLocationDialog.KEY_MANUAL_PINCODE, loc.pincode)
                 .putString(ManualLocationDialog.KEY_MANUAL_LAT, String.valueOf(loc.latitude))
                 .putString(ManualLocationDialog.KEY_MANUAL_LON, String.valueOf(loc.longitude))
@@ -439,9 +446,13 @@ public class CameraFragment extends Fragment {
 
             if (isManualMode) {
                 logToScreen("System: Manual Override detected.");
-                // Construct address from popup fields
-                finalAddress = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address") + 
-                               " (" + settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LANDMARK, "") + ")";
+                
+                // FIX ISSUE #2: Remove brackets from landmark when constructing finalAddress string
+                String locName = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address");
+                String landmark = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LANDMARK, "").replace("(", "").replace(")", "");
+                
+                // Replace parentheses with a comma separator for the watermark line
+                finalAddress = locName + (landmark.isEmpty() ? "" : ", " + landmark);
 
                 finalManualSubLine = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_STATE, "") + ", " +
                                      settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_COUNTRY, "") + " - " +
