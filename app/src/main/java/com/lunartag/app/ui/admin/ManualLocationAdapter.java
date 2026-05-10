@@ -18,6 +18,7 @@ import java.util.List;
 /**
  * Adapter to display the list of saved workplaces in the Manual Location Dialog.
  * Supports Logic #1: Multiple workplaces and active selection.
+ * UPDATED: Sanitized landmark display to remove brackets (Issue #2).
  */
 public class ManualLocationAdapter extends RecyclerView.Adapter<ManualLocationAdapter.WorkplaceViewHolder> {
 
@@ -58,8 +59,11 @@ public class ManualLocationAdapter extends RecyclerView.Adapter<ManualLocationAd
         // Logic #1: Display the descriptive name
         holder.textName.setText(location.locationName);
 
-        // Logic #3: Combine Landmark and Pincode for a descriptive sub-line
-        String details = location.landmark;
+        // FIX ISSUE #2: Clean brackets from landmark before displaying in the list
+        String cleanLandmark = location.landmark != null ? location.landmark.replace("(", "").replace(")", "") : "";
+
+        // Logic #3: Combine cleaned Landmark and Pincode for a descriptive sub-line
+        String details = cleanLandmark;
         if (location.pincode != null && !location.pincode.isEmpty()) {
             details += (details.isEmpty() ? "" : ", ") + location.pincode;
         }
