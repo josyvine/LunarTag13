@@ -18,10 +18,25 @@ import java.util.Locale;
 
 /**
  * Utility class to handle robust geocoding with retry logic and OSM fallback.
+ * UPDATED: Added Detailed Parsing to extract Landmarks and Pincodes globally.
  */
 public class GeocodingUtils {
 
     private static final String TAG = "GeocodingUtils";
+
+    /**
+     * Data structure to hold parsed address components for the Workplace database.
+     */
+    public static class AddressDetails {
+        public String fullAddress = "";
+        public String landmark = ""; // e.g., "Near Supplyco" or "Canara Bank"
+        public String city = "";
+        public String state = "";
+        public String pincode = "";
+        public String country = "";
+        public double latitude = 0.0;
+        public double longitude = 0.0;
+    }
 
     /**
      * Attempts to get an address using Native Geocoder (with retries) 
@@ -91,6 +106,82 @@ public class GeocodingUtils {
         }
 
         return "Address Not Found";
+    }
+
+    /**
+     * NEW: Performs reverse geocoding and parses components into an AddressDetails object.
+     * This supports Logic #3 and #4 by identifying the Landmark before State/Pincode.
+     */
+    public static AddressDetails getDetailedAddress(Context context, Location location) {
+        AddressDetails details = new AddressDetails();
+        if (location == null) return details;
+
+        details.latitude = location.getLatitude();
+        details.longitude = location.getLongitude();
+
+        Geocoder geocoder = new Geocoder(context, Locale.getDefault());
+        try {
+            List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
+            if (addresses != null && !addresses.isEmpty()) {
+                Address addr = addresses.get(0);
+                
+                details.fullAddress = addr.getAddressLine(0);
+                details.pincode = addr.getPostalCode() != null ? addr.getPostalCode() : "";
+                details.state = addr.getAdminArea() != null ? addr.getAdminArea() : "";
+                details.country = addr.getCountryName() != null ? addr.getCountryName() : "";
+                details.city = addr.getLocality() != null ? addr.getLocality() : "";
+
+                // Logic #3: Landmark extraction (Everything before City/State)
+                StringBuilder landmarkBuilder = new StringBuilder();
+                if (addr.getFeatureName() != null) landmarkBuilder.append(addr.getFeatureName());
+                if (addr.getSubLocality() != null && !addr.getSubLocality().equals(addr.getFeatureName())) {
+                    if (landmarkBuilder.length() > 0) landmarkBuilder.append(", ");
+                    landmarkBuilder.append(addr.getSubLocality());
+                }
+                details.landmark = landmarkBuilder.toString();
+                
+                return details;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Native Detailed Geocode failed, trying OSM fallback...");
+        }
+
+        // Fallback to OSM for detailed JSON parsing if Native fails
+        try {
+            String urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + 
+                               location.getLatitude() + "&lon=" + location.getLongitude() + "&zoom=18&addressdetails=1";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestProperty("User-Agent", "LunarTagApp/1.0");
+
+            if (conn.getResponseCode() == 200) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) response.append(line);
+                reader.close();
+
+                JSONObject json = new JSONObject(response.toString());
+                details.fullAddress = json.optString("display_name", "");
+                
+                JSONObject addrJson = json.optJSONObject("address");
+                if (addrJson != null) {
+                    details.pincode = addrJson.optString("postcode", "");
+                    details.state = addrJson.optString("state", "");
+                    details.country = addrJson.optString("country", "");
+                    details.city = addrJson.optString("city", addrJson.optString("town", ""));
+                    
+                    // Logic #3: Landmark extraction for OSM (amenity, shop, or road)
+                    String poi = addrJson.optString("amenity", addrJson.optString("shop", ""));
+                    String road = addrJson.optString("road", "");
+                    details.landmark = (poi.isEmpty()) ? road : poi + (road.isEmpty() ? "" : ", " + road);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "OSM Detailed Geocode failed: " + e.getMessage());
+        }
+
+        return details;
     }
 
     /**
