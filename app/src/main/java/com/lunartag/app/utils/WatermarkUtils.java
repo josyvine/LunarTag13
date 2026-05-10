@@ -22,6 +22,7 @@ import java.util.Hashtable;
 /**
  * A utility class with static methods for rendering the watermark onto a photo.
  * UPDATED: Optimized for Smart Workplace text lengths and automated landmark strings.
+ * FIXED: Increased QR code size for better scannability (Issue #1).
  */
 public class WatermarkUtils {
 
@@ -76,9 +77,9 @@ public class WatermarkUtils {
         float blockHeight = totalTextHeight + 60;
 
         // NEW: Adjust block height if QR code is enabled
-        // We use 200 for the QR size + space for the app logo
+        // FIXED ISSUE #1: Updated height calculation to match the new 350px QR size
         if (showQr) {
-            float qrSideHeight = (width * 0.08f) + 200 + 40; // Logo size + QR size + padding
+            float qrSideHeight = (width * 0.08f) + 350 + 40; // Logo size + New larger QR size + padding
             if (qrSideHeight > blockHeight) {
                 blockHeight = qrSideHeight;
             }
@@ -176,14 +177,15 @@ public class WatermarkUtils {
 
     /**
      * NEW Helper: Generates a QR Code bitmap targeting a Google Maps URL.
-     * UPDATED: Increased size to 200px for legibility.
+     * FIXED ISSUE #1: Increased size to 350px for high-quality scannability.
      */
     private static Bitmap generateQrCodeBitmap(String lat, String lon) {
         try {
             // URL format that opens directly in Google Maps app or browser
             String uri = "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
             
-            int size = 200; // Standardized for scannability
+            // FIXED: Increased from 200 to 350
+            int size = 350; 
             Hashtable<EncodeHintType, Object> hints = new Hashtable<>();
             hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
             hints.put(EncodeHintType.MARGIN, 1); // Minimum white border
