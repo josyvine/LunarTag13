@@ -13,6 +13,7 @@ import com.lunartag.app.ui.admin.ManualLocationDialog;
 /**
  * Orchestrates the Smart Workplace logic.
  * Handles Logic #3 (Landmark Extraction) and Logic #4 (Auto-Creation).
+ * UPDATED: Removed brackets from landmark extraction logic (Issue #2).
  */
 public class WorkplaceManager {
 
@@ -64,9 +65,14 @@ public class WorkplaceManager {
             }
         }
 
-        // Fallback: If no descriptive keywords, use City + Pincode logic
+        // FIX ISSUE #2: If no descriptive keywords, use City + Pincode logic WITHOUT brackets
         if (landmark == null || landmark.isEmpty()) {
-            landmark = details.city + " (" + details.pincode + ")";
+            landmark = details.city + " " + details.pincode;
+        }
+
+        // FIX ISSUE #2: Final safety check to strip any brackets returned by the sensor/geocoder
+        if (landmark != null) {
+            landmark = landmark.replace("(", "").replace(")", "").trim();
         }
 
         return landmark;
@@ -105,9 +111,12 @@ public class WorkplaceManager {
      * Updates the shared preferences so WatermarkUtils uses the new data immediately.
      */
     private void updateActivePreferences(ManualLocation loc) {
+        // Ensure landmark is clean of brackets before saving to preferences
+        String cleanLandmark = loc.landmark != null ? loc.landmark.replace("(", "").replace(")", "") : "";
+
         prefs.edit()
                 .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, loc.locationName)
-                .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, loc.landmark)
+                .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, cleanLandmark)
                 .putString(ManualLocationDialog.KEY_MANUAL_PINCODE, loc.pincode)
                 .putString(ManualLocationDialog.KEY_MANUAL_LAT, String.valueOf(loc.latitude))
                 .putString(ManualLocationDialog.KEY_MANUAL_LON, String.valueOf(loc.longitude))
