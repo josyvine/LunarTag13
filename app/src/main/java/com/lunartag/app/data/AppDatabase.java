@@ -7,19 +7,19 @@ import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
 import com.lunartag.app.model.AuditLog;
+import com.lunartag.app.model.ManualLocation;
 import com.lunartag.app.model.Photo;
 
 /**
  * The main database class for the application.
- * This class defines the database configuration and serves as the main access point
- * to the persisted data. It follows a singleton pattern to prevent having multiple
- * instances of the database opened at the same time.
+ * UPDATED: Added ManualLocation entity and bumped version to 2 for smart workplace tracking.
  */
-@Database(entities = {Photo.class, AuditLog.class}, version = 1, exportSchema = false)
+@Database(entities = {Photo.class, AuditLog.class, ManualLocation.class}, version = 2, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
     public abstract PhotoDao photoDao();
     public abstract AuditLogDao auditLogDao();
+    public abstract ManualLocationDao manualLocationDao();
 
     private static volatile AppDatabase INSTANCE;
 
@@ -29,8 +29,8 @@ public abstract class AppDatabase extends RoomDatabase {
                 if (INSTANCE == null) {
                     INSTANCE = Room.databaseBuilder(context.getApplicationContext(),
                                     AppDatabase.class, "lunartag_database")
-                            // NOTE: In a production app, you would need a proper migration strategy
-                            // instead of destructive migration.
+                            // Fallback to destructive migration is kept as per original logic 
+                            // but version is bumped to trigger the table creation.
                             .fallbackToDestructiveMigration()
                             .build();
                 }
@@ -38,4 +38,4 @@ public abstract class AppDatabase extends RoomDatabase {
         }
         return INSTANCE;
     }
-          }
+}
