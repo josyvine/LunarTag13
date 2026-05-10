@@ -1,6 +1,9 @@
 package com.lunartag.app.ui.camera;
 
 import android.Manifest;
+import android.animation.ArgbEvaluator;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
@@ -44,8 +47,10 @@ import androidx.fragment.app.Fragment;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.lunartag.app.data.AppDatabase;
+import com.lunartag.app.data.ManualLocationDao;
 import com.lunartag.app.data.PhotoDao;
 import com.lunartag.app.databinding.FragmentCameraBinding;
+import com.lunartag.app.model.ManualLocation;
 import com.lunartag.app.model.Photo;
 import com.lunartag.app.ui.admin.ManualLocationDialog;
 import com.lunartag.app.utils.GeocodingUtils;
@@ -96,8 +101,11 @@ public class CameraFragment extends Fragment {
     // Zoom Handling
     private ScaleGestureDetector scaleGestureDetector;
 
-    // Location
+    // Location & Workplace Logic
     private LocationProvider locationProvider;
+    private ManualLocationDao manualLocationDao;
+    private ObjectAnimator gpsBlinkAnimator;
+    private boolean isBlinking = false;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -112,13 +120,15 @@ public class CameraFragment extends Fragment {
 
         cameraExecutor = Executors.newSingleThreadExecutor();
         locationProvider = new LocationProvider(getContext());
+        manualLocationDao = AppDatabase.getDatabase(requireContext()).manualLocationDao();
 
         // Setup Listener to turn GPS Icon GREEN when locked
         locationProvider.setStatusListener(location -> {
             new android.os.Handler(Looper.getMainLooper()).post(() -> {
                 if (binding != null) {
                     binding.buttonGpsStatus.setColorFilter(Color.GREEN);
-                    // Don't spam the log, just visual indication
+                    // Logic #2: Automatic Smart Workplace Check on lock
+                    performSmartWorkplaceCheck(location);
                 }
             });
         });
@@ -165,12 +175,16 @@ public class CameraFragment extends Fragment {
         // 4. Flip Camera Button Logic
         binding.buttonFlipCamera.setOnClickListener(v -> toggleCamera());
 
-        // 5. NEW: GPS Button Logic (Footer)
+        // 5. NEW: GPS Button Logic (Footer) - Triggers Smart Sync
         binding.buttonGpsStatus.setOnClickListener(v -> {
-            logToScreen("User Command: Force GPS Update.");
-            // Logic is handled automatically by LocationProvider being on, 
-            // but this gives user confidence
-            Toast.makeText(getContext(), "Refining GPS Signal...", Toast.LENGTH_SHORT).show();
+            logToScreen("User Command: Force GPS/Workplace Sync.");
+            Location loc = locationProvider.getCurrentLocationFast();
+            if (loc != null) {
+                performSmartWorkplaceCheck(loc);
+                Toast.makeText(getContext(), "Syncing Workplace...", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(getContext(), "Refining GPS Signal...", Toast.LENGTH_SHORT).show();
+            }
         });
 
         // 6. NEW: Folder Selection Logic (Footer)
@@ -179,7 +193,116 @@ public class CameraFragment extends Fragment {
             StorageUtils.launchFolderSelector(this);
         });
 
+        updateWorkplaceDisplay();
         updateSlotCounter(); // Update UI if in admin mode
+    }
+
+    /**
+     * LOGIC #2, #3, and #4 Implementation.
+     * Automatically refreshes, warns of mismatch, and auto-switches or auto-adds workplaces.
+     */
+    private void performSmartWorkplaceCheck(Location currentGps) {
+        if (currentGps == null) return;
+        
+        SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
+        boolean isManualMode = prefs.getBoolean(ManualLocationDialog.KEY_LOCATION_MODE_MANUAL, false);
+        boolean isAutoDetectEnabled = prefs.getBoolean(ManualLocationDialog.KEY_AUTO_WORKPLACE_DETECTION, true);
+
+        // We only perform the mismatch warning and auto-switch if user is in Manual Mode
+        if (!isManualMode || !isAutoDetectEnabled) {
+            stopGpsWarningBlink();
+            return;
+        }
+
+        // Get the coordinates of the workplace CURRENTLY selected in manual location
+        String savedLatStr = prefs.getString(ManualLocationDialog.KEY_MANUAL_LAT, "0.0");
+        String savedLonStr = prefs.getString(ManualLocationDialog.KEY_MANUAL_LON, "0.0");
+        double savedLat = Double.parseDouble(savedLatStr);
+        double savedLon = Double.parseDouble(savedLonStr);
+
+        // Logic #2: Calculate distance to detect mismatch
+        float distance = locationProvider.calculateDistanceInMeters(
+                currentGps.getLatitude(), currentGps.getLongitude(), savedLat, savedLon);
+
+        if (distance > 200) { // Mismatch detected if distance > 200 meters
+            logToScreen("Warning: Workplace Mismatch (" + (int)distance + "m). Starting Blink.");
+            startGpsWarningBlink();
+
+            // Logic #3 & #4: Background DB search or Auto-Add
+            cameraExecutor.execute(() -> {
+                ManualLocation closestMatch = manualLocationDao.findClosestLocation(currentGps.getLatitude(), currentGps.getLongitude());
+                
+                if (closestMatch != null) {
+                    // Logic #3: Found another saved workplace nearby - Auto Switch
+                    logToScreen("Smart Sync: Auto-Switching to workplace: " + closestMatch.locationName);
+                    activateWorkplaceProfile(closestMatch);
+                } else {
+                    // Logic #4: No match found - Auto Create new Workplace Profile
+                    logToScreen("Smart Sync: New Workplace detected. Auto-creating...");
+                    GeocodingUtils.AddressDetails details = GeocodingUtils.getDetailedAddress(requireContext(), currentGps);
+                    
+                    ManualLocation newWorkplace = new ManualLocation();
+                    newWorkplace.locationName = details.city.isEmpty() ? "New Workplace" : details.city;
+                    newWorkplace.landmark = details.landmark;
+                    newWorkplace.pincode = details.pincode;
+                    newWorkplace.state = details.state;
+                    newWorkplace.country = details.country;
+                    newWorkplace.latitude = currentGps.getLatitude();
+                    newWorkplace.longitude = currentGps.getLongitude();
+                    newWorkplace.isActive = true;
+
+                    manualLocationDao.insertLocation(newWorkplace);
+                    activateWorkplaceProfile(newWorkplace);
+                }
+            });
+        } else {
+            stopGpsWarningBlink();
+        }
+    }
+
+    private void activateWorkplaceProfile(ManualLocation loc) {
+        SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
+        prefs.edit()
+                .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, loc.locationName)
+                .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, loc.landmark)
+                .putString(ManualLocationDialog.KEY_MANUAL_PINCODE, loc.pincode)
+                .putString(ManualLocationDialog.KEY_MANUAL_LAT, String.valueOf(loc.latitude))
+                .putString(ManualLocationDialog.KEY_MANUAL_LON, String.valueOf(loc.longitude))
+                .putString(ManualLocationDialog.KEY_MANUAL_STATE, loc.state)
+                .putString(ManualLocationDialog.KEY_MANUAL_COUNTRY, loc.country)
+                .apply();
+        
+        new android.os.Handler(Looper.getMainLooper()).post(() -> {
+            stopGpsWarningBlink();
+            updateWorkplaceDisplay();
+            Toast.makeText(getContext(), "Workplace Auto-Sync: " + loc.locationName, Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void startGpsWarningBlink() {
+        if (isBlinking) return;
+        isBlinking = true;
+        gpsBlinkAnimator = ObjectAnimator.ofInt(binding.buttonGpsStatus, "colorFilter", Color.GREEN, Color.RED);
+        gpsBlinkAnimator.setDuration(600);
+        gpsBlinkAnimator.setEvaluator(new ArgbEvaluator());
+        gpsBlinkAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        gpsBlinkAnimator.setRepeatMode(ValueAnimator.REVERSE);
+        gpsBlinkAnimator.start();
+    }
+
+    private void stopGpsWarningBlink() {
+        if (gpsBlinkAnimator != null) {
+            gpsBlinkAnimator.cancel();
+            binding.buttonGpsStatus.setColorFilter(Color.GREEN);
+            isBlinking = false;
+        }
+    }
+
+    private void updateWorkplaceDisplay() {
+        if (binding == null) return;
+        SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
+        String name = prefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "Automatic");
+        binding.textActiveWorkplace.setText("Workplace: " + name);
     }
 
     // --- LIFECYCLE FOR GPS ENGINE (NEW) ---
@@ -189,6 +312,7 @@ public class CameraFragment extends Fragment {
         logToScreen("System: Resuming. Starting GPS Engine...");
         // Start tracking immediately so we have data BEFORE capture
         if (locationProvider != null) locationProvider.startLocationUpdates();
+        updateWorkplaceDisplay();
     }
 
     @Override
@@ -196,6 +320,7 @@ public class CameraFragment extends Fragment {
         super.onPause();
         logToScreen("System: Pausing. Stopping GPS Engine.");
         if (locationProvider != null) locationProvider.stopLocationUpdates();
+        stopGpsWarningBlink();
     }
     // --------------------------------------
 
@@ -206,7 +331,7 @@ public class CameraFragment extends Fragment {
         // Determine if this is an error or info
         String type = "info";
         String lowerMsg = message.toLowerCase();
-        if (lowerMsg.contains("error") || lowerMsg.contains("fail") || lowerMsg.contains("missing")) {
+        if (lowerMsg.contains("error") || lowerMsg.contains("fail") || lowerMsg.contains("missing") || lowerMsg.contains("warning")) {
             type = "error";
         }
 
