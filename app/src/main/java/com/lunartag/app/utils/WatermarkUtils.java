@@ -21,7 +21,7 @@ import java.util.Hashtable;
 
 /**
  * A utility class with static methods for rendering the watermark onto a photo.
- * UPDATED: Optimized layout for vertical centering and larger QR code.
+ * UPDATED: Optimized for Smart Workplace text lengths and automated landmark strings.
  */
 public class WatermarkUtils {
 
@@ -148,7 +148,8 @@ public class WatermarkUtils {
         
         float maxAllowedWidth = (width - 60);
         if (logo != null) {
-            maxAllowedWidth = (width - (width * 0.30f)); // More room for larger QR
+            // Give more room for long workplace addresses but respect the logo/QR boundary
+            maxAllowedWidth = (width - (width * 0.30f)); 
         }
 
         // Center the text block vertically within the blockHeight
@@ -158,6 +159,7 @@ public class WatermarkUtils {
             if (line != null) {
                 float lineWidth = textPaint.measureText(line);
                 if (lineWidth > maxAllowedWidth) {
+                    // Smart Scaling: Shrink font for this line if it's a long landmark description
                     float originalTextSize = textPaint.getTextSize();
                     float scaleFactor = maxAllowedWidth / lineWidth;
                     textPaint.setTextSize(originalTextSize * scaleFactor);
@@ -181,7 +183,7 @@ public class WatermarkUtils {
             // URL format that opens directly in Google Maps app or browser
             String uri = "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
             
-            int size = 200; // Increased from 120 to 200
+            int size = 200; // Standardized for scannability
             Hashtable<EncodeHintType, Object> hints = new Hashtable<>();
             hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
             hints.put(EncodeHintType.MARGIN, 1); // Minimum white border
