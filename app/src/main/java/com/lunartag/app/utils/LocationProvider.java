@@ -21,6 +21,7 @@ import com.google.android.gms.location.Priority;
  * A "Pro" architecture Location Provider.
  * It runs in the background, maintaining a constant "Fresh" GPS lock
  * so the Camera never has to wait.
+ * UPDATED: Added distance calculation helper for Smart Workplace detection.
  */
 public class LocationProvider {
 
@@ -122,5 +123,21 @@ public class LocationProvider {
             // rather than crashing or hanging.
             return null;
         }
+    }
+
+    /**
+     * NEW HELPER: Calculates distance in meters between two points.
+     * Used for Logic #2 & #3: detecting workplace mismatch and auto-switching.
+     *
+     * @param startLat Current GPS Latitude
+     * @param startLon Current GPS Longitude
+     * @param endLat   Workplace saved Latitude
+     * @param endLon   Workplace saved Longitude
+     * @return Distance in meters
+     */
+    public float calculateDistanceInMeters(double startLat, double startLon, double endLat, double endLon) {
+        float[] results = new float[1];
+        Location.distanceBetween(startLat, startLon, endLat, endLon, results);
+        return results[0];
     }
 }
