@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?android:attr/colorBackground">
@@ -13,8 +14,8 @@
             android:id="@+id/toolbar_manual_location"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="Manual Location Override"
             app:navigationIcon="@android:drawable/ic_menu_close_clear_cancel"
+            app:title="Smart Workplace Manager"
             app:titleTextColor="@android:color/white" />
 
     </com.google.android.material.appbar.AppBarLayout>
@@ -28,21 +29,48 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="16dp">
 
+            <!-- LOGIC #1: WORKPLACE LIST SECTION -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="Select Primary Workplace"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?attr/colorPrimary"
+                android:textStyle="bold" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler_saved_workplaces"
+                android:layout_width="match_parent"
+                android:layout_height="220dp"
+                android:layout_marginBottom="16dp"
+                android:background="#F5F5F5"
+                tools:listitem="@layout/item_manual_location" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="24dp"
+                android:background="#E0E0E0" />
+
+            <!-- FORM SECTION (Original Fields Preserved) -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:text="Enter custom details below. These will override the GPS sensor data on the watermark."
-                android:textAppearance="?attr/textAppearanceBody2" />
+                android:text="Add New Workplace Profile"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?attr/colorPrimary"
+                android:textStyle="bold" />
 
             <com.google.android.material.textfield.TextInputLayout
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:hint="Location Line 1 (Street/Building)">
+                android:hint="Workplace Name (e.g. Canara Bank)">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/edit_manual_location_1"
@@ -56,7 +84,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:hint="Landmarks">
+                android:hint="Landmarks (e.g. Near Supplyco)">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/edit_manual_landmark"
@@ -82,16 +110,16 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:baselineAligned="false">
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
                 <com.google.android.material.textfield.TextInputLayout
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_marginEnd="8dp"
                     android:layout_marginBottom="12dp"
+                    android:layout_weight="1"
                     android:hint="Latitude">
 
                     <com.google.android.material.textfield.TextInputEditText
@@ -105,8 +133,8 @@
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_marginBottom="12dp"
+                    android:layout_weight="1"
                     android:hint="Longitude">
 
                     <com.google.android.material.textfield.TextInputEditText
@@ -146,55 +174,39 @@
                     android:inputType="textCapWords" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- NEW: QR CODE TOGGLE SECTION -->
-            <LinearLayout
+            <!-- LOGIC #3: AUTO DETECTION TOGGLE -->
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switch_auto_workplace_detect"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp"
+                android:checked="true"
+                android:text="Auto Workplace Detection"
+                android:textAppearance="?attr/textAppearanceSubtitle1"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_marginBottom="24dp"
-                android:padding="4dp">
+                android:text="Automatically switch or add workplaces based on GPS location."
+                android:textAppearance="?attr/textAppearanceCaption" />
 
-                <ImageView
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:src="@drawable/qr_code_24px"
-                    app:tint="?attr/colorPrimary"
-                    android:contentDescription="QR Code Icon" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_weight="1"
-                    android:layout_marginStart="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Include Location QR Code"
-                        android:textAppearance="?attr/textAppearanceSubtitle1"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Prints a scanable map link on photo"
-                        android:textAppearance="?attr/textAppearanceCaption" />
-                </LinearLayout>
-
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switch_manual_qr"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
+            <!-- Original QR Toggle -->
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switch_manual_qr"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:text="Include Location QR Code"
+                android:textAppearance="?attr/textAppearanceSubtitle1"
+                android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_save_manual_location"
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
-                android:text="SAVE MANUAL OVERRIDE"
+                android:text="SAVE AND ACTIVATE"
                 app:cornerRadius="8dp" />
 
         </LinearLayout>
