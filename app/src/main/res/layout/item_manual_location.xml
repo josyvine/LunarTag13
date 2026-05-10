@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/card_workplace_item"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginVertical="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#E0E0E0">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <!-- Icon representing a workplace -->
+        <ImageView
+            android:id="@+id/image_workplace_icon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/my_location_24px"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:tint="?attr/colorPrimary" />
+
+        <!-- Workplace Name (Logic #1: Location Line 1) -->
+        <TextView
+            android:id="@+id/text_workplace_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="8dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceSubtitle1"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@+id/image_active_check"
+            app:layout_constraintStart_toEndOf="@id/image_workplace_icon"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Canara Bank - Mala Office" />
+
+        <!-- Workplace Details (Logic #3: Landmark and Pincode) -->
+        <TextView
+            android:id="@+id/text_workplace_details"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginEnd="8dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textAppearance="?attr/textAppearanceCaption"
+            android:textColor="#757575"
+            app:layout_constraintEnd_toStartOf="@+id/image_active_check"
+            app:layout_constraintStart_toEndOf="@id/image_workplace_icon"
+            app:layout_constraintTop_toBottomOf="@id/text_workplace_name"
+            tools:text="Near Supplyco, Kerala - 680732" />
+
+        <!-- Selection Indicator (Logic #1: Shows if Primary) -->
+        <ImageView
+            android:id="@+id/image_active_check"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/checkbox_on_background"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="?attr/colorPrimary"
+            tools:visibility="visible" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>
