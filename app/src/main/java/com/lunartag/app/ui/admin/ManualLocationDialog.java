@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 /**
  * A full-screen DialogFragment that allows users to manage multiple workplace profiles.
  * This file integrates the Save logic and the List Selection logic (Logic #1).
+ * UPDATED: Added Landmark sanitization to remove brackets (Issue #2).
  */
 public class ManualLocationDialog extends DialogFragment {
 
@@ -135,7 +136,11 @@ public class ManualLocationDialog extends DialogFragment {
 
         ManualLocation workplace = new ManualLocation();
         workplace.locationName = loc1;
-        workplace.landmark = editLandmark.getText().toString().trim();
+        
+        // FIX ISSUE #2: Remove brackets from landmark before saving to database
+        String landmarkClean = editLandmark.getText().toString().trim().replace("(", "").replace(")", "");
+        workplace.landmark = landmarkClean;
+        
         workplace.pincode = pin;
         workplace.state = editState.getText().toString().trim();
         workplace.country = editCountry.getText().toString().trim();
@@ -172,10 +177,13 @@ public class ManualLocationDialog extends DialogFragment {
     }
 
     private void applyToPreferences(ManualLocation loc) {
+        // FIX ISSUE #2: Ensure landmark is clean of brackets when applying to watermark settings
+        String landmarkClean = loc.landmark.replace("(", "").replace(")", "");
+
         prefs.edit()
                 .putBoolean(KEY_LOCATION_MODE_MANUAL, true)
                 .putString(KEY_MANUAL_LOC_1, loc.locationName)
-                .putString(KEY_MANUAL_LANDMARK, loc.landmark)
+                .putString(KEY_MANUAL_LANDMARK, landmarkClean)
                 .putString(KEY_MANUAL_PINCODE, loc.pincode)
                 .putString(KEY_MANUAL_LAT, String.valueOf(loc.latitude))
                 .putString(KEY_MANUAL_LON, String.valueOf(loc.longitude))
