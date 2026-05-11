@@ -14,6 +14,7 @@ import com.lunartag.app.ui.admin.ManualLocationDialog;
  * Orchestrates the Smart Workplace logic.
  * Handles Logic #3 (Landmark Extraction) and Logic #4 (Auto-Creation).
  * UPDATED: Fixed Glitch #3 (Messy Address) and Issue #2 (Brackets).
+ * UPDATED: Reinforced Landmark extraction to strictly avoid Plus Codes and Unnamed segments (Glitch #2).
  */
 public class WorkplaceManager {
 
@@ -33,7 +34,7 @@ public class WorkplaceManager {
     /**
      * Logic #3: Smart Landmark Extraction.
      * FIXED GLITCH #3: Improved extraction to match the quality of Automatic Mode.
-     * It now avoids Plus Codes and extracts the most specific part of the address line.
+     * It now avoids Plus Codes, Unnamed roads, and extracts the most specific part of the address line.
      */
     public String extractSmartLandmark(GeocodingUtils.AddressDetails details) {
         if (details == null || details.fullAddress == null || details.fullAddress.isEmpty()) {
@@ -42,30 +43,34 @@ public class WorkplaceManager {
 
         String landmark = "";
 
-        // 1. Try to take the specific landmark segments provided by the geocoder
+        // 1. Try to take the specific landmark segments provided by the geocoder (Feature Name)
         if (details.landmark != null && !details.landmark.isEmpty()) {
-            // Avoid using technical "Plus Codes" as landmarks
-            if (!details.landmark.contains("+")) {
+            // Avoid using technical "Plus Codes" or generic "Unnamed Road" as landmarks
+            String raw = details.landmark.toLowerCase();
+            if (!raw.contains("+") && !raw.contains("unnamed")) {
                 landmark = details.landmark;
             }
         }
 
-        // 2. If landmark is still empty/invalid, parse the first segment of the full address
+        // 2. If landmark is still empty/invalid, parse segments of the full address
         if (landmark.isEmpty()) {
             String[] segments = details.fullAddress.split(",");
-            if (segments.length > 0) {
-                String firstSegment = segments[0].trim();
-                // If the first segment is a Plus Code, try the second segment
-                if (firstSegment.contains("+") && segments.length > 1) {
-                    landmark = segments[1].trim();
-                } else {
-                    landmark = firstSegment;
+            for (String segment : segments) {
+                String trimmed = segment.trim();
+                String lower = trimmed.toLowerCase();
+                
+                // Skip pathetic segments: Plus codes, Unnamed roads, or just numeric/short strings
+                if (lower.contains("+") || lower.contains("unnamed") || trimmed.length() < 3) {
+                    continue;
                 }
+                
+                landmark = trimmed;
+                break; // Found the first valid human-readable segment
             }
         }
 
         // 3. Last Resort: Search for descriptive keywords (Near, Opp, etc.)
-        if (landmark.length() < 5) {
+        if (landmark.isEmpty() || landmark.length() < 5) {
             String fullAddr = details.fullAddress.toLowerCase();
             String[] keywords = {"near", "opposite", "opp", "behind", "beside", "inside", "at"};
             for (String key : keywords) {
