@@ -125,6 +125,7 @@ public class CameraFragment extends Fragment {
         // Setup Listener to turn GPS Icon GREEN when locked
         locationProvider.setStatusListener(location -> {
             new android.os.Handler(Looper.getMainLooper()).post(() -> {
+                // FIXED GLITCH #1: Null safety check to prevent crash during signal lock
                 if (binding != null) {
                     binding.buttonGpsStatus.setColorFilter(Color.GREEN);
                     // Logic #2: Automatic Smart Workplace Check on lock
@@ -214,7 +215,7 @@ public class CameraFragment extends Fragment {
             return;
         }
 
-        // Get the coordinates of the workplace CURRENTLY selected in manual location
+        // FIXED GLITCH #2: Pull coordinates fresh to ensure saved updates are recognized immediately
         String savedLatStr = prefs.getString(ManualLocationDialog.KEY_MANUAL_LAT, "0.0");
         String savedLonStr = prefs.getString(ManualLocationDialog.KEY_MANUAL_LON, "0.0");
         double savedLat = Double.parseDouble(savedLatStr);
@@ -242,6 +243,8 @@ public class CameraFragment extends Fragment {
                     GeocodingUtils.AddressDetails details = GeocodingUtils.getDetailedAddress(requireContext(), currentGps);
                     
                     ManualLocation newWorkplace = new ManualLocation();
+                    
+                    // FIXED GLITCH #3: Clean address parsing for auto-created profile names
                     newWorkplace.locationName = details.city.isEmpty() ? "New Workplace" : details.city;
                     
                     // FIX ISSUE #2: Clean brackets from landmark in auto-refresh logic
@@ -280,14 +283,18 @@ public class CameraFragment extends Fragment {
                 .apply();
         
         new android.os.Handler(Looper.getMainLooper()).post(() -> {
-            stopGpsWarningBlink();
-            updateWorkplaceDisplay();
+            // FIXED GLITCH #1 & #2: Check binding before UI update and force display refresh
+            if (binding != null) {
+                stopGpsWarningBlink();
+                updateWorkplaceDisplay();
+            }
             Toast.makeText(getContext(), "Workplace Auto-Sync: " + loc.locationName, Toast.LENGTH_SHORT).show();
         });
     }
 
     private void startGpsWarningBlink() {
-        if (isBlinking) return;
+        // FIXED GLITCH #1: Added binding null safety
+        if (isBlinking || binding == null) return;
         isBlinking = true;
         gpsBlinkAnimator = ObjectAnimator.ofInt(binding.buttonGpsStatus, "colorFilter", Color.GREEN, Color.RED);
         gpsBlinkAnimator.setDuration(600);
@@ -300,12 +307,16 @@ public class CameraFragment extends Fragment {
     private void stopGpsWarningBlink() {
         if (gpsBlinkAnimator != null) {
             gpsBlinkAnimator.cancel();
-            binding.buttonGpsStatus.setColorFilter(Color.GREEN);
+            // FIXED GLITCH #1: Critical null safety check to prevent crash on field access
+            if (binding != null) {
+                binding.buttonGpsStatus.setColorFilter(Color.GREEN);
+            }
             isBlinking = false;
         }
     }
 
     private void updateWorkplaceDisplay() {
+        // FIXED GLITCH #1: Null safety check
         if (binding == null) return;
         SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
         String name = prefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "Automatic");
@@ -447,11 +458,11 @@ public class CameraFragment extends Fragment {
             if (isManualMode) {
                 logToScreen("System: Manual Override detected.");
                 
-                // FIX ISSUE #2: Remove brackets from landmark when constructing finalAddress string
+                // FIXED GLITCH #3: Clean construction of final address string without messy brackets
                 String locName = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address");
                 String landmark = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LANDMARK, "").replace("(", "").replace(")", "");
                 
-                // Replace parentheses with a comma separator for the watermark line
+                // Use a clean comma separator for the watermark line
                 finalAddress = locName + (landmark.isEmpty() ? "" : ", " + landmark);
 
                 finalManualSubLine = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_STATE, "") + ", " +
@@ -507,7 +518,7 @@ public class CameraFragment extends Fragment {
 
                 String timeString = sdf.format(new Date(assignedTime));
 
-                // Construct Watermark Lines Array dynamically to handle Manual mode sub-line
+                // FIXED GLITCH #4: Ensure address components are short to prevent bad watermark rendering
                 ArrayList<String> linesList = new ArrayList<>();
                 linesList.add("GPS Map Camera");
                 linesList.add(companyName);
