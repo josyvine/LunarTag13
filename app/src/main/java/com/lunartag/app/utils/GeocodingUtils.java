@@ -18,7 +18,7 @@ import java.util.Locale;
 
 /**
  * Utility class to handle robust geocoding with retry logic and OSM fallback.
- * UPDATED: Added Detailed Parsing to extract Landmarks and Pincodes globally.
+ * UPDATED: Unified address quality and removed brackets from all outputs (Glitch #3 / Issue #2).
  */
 public class GeocodingUtils {
 
@@ -41,6 +41,7 @@ public class GeocodingUtils {
     /**
      * Attempts to get an address using Native Geocoder (with retries) 
      * and falls back to OpenStreetMap if native fails.
+     * Used by Automatic mode.
      */
     public static String getAddressWithFallback(Context context, Location location) {
         if (location == null) return "Location Unknown";
@@ -64,7 +65,6 @@ public class GeocodingUtils {
                 }
             } catch (Exception e) {
                 broadcastLog(context, "Warning: Native Geocoder Attempt " + i + " failed (" + e.getMessage() + ")", "error");
-                // Brief pause before retry
                 try { Thread.sleep(200); } catch (InterruptedException ignored) {}
             }
         }
@@ -73,12 +73,10 @@ public class GeocodingUtils {
         broadcastLog(context, "System: Native Geocoder Exhausted. Switching to OSM Fallback...", "error");
         
         try {
-            // OSM Nominatim API URL
             String urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=18&addressdetails=1";
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
-            // OSM requires a User-Agent
             conn.setRequestProperty("User-Agent", "LunarTagApp/1.0"); 
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);
@@ -110,7 +108,8 @@ public class GeocodingUtils {
 
     /**
      * NEW: Performs reverse geocoding and parses components into an AddressDetails object.
-     * This supports Logic #3 and #4 by identifying the Landmark before State/Pincode.
+     * FIXED GLITCH #3: Unified address logic with the fallback version for maximum accuracy.
+     * FIXED ISSUE #2: Automatically strips brackets from all address components.
      */
     public static AddressDetails getDetailedAddress(Context context, Location location) {
         AddressDetails details = new AddressDetails();
@@ -125,20 +124,23 @@ public class GeocodingUtils {
             if (addresses != null && !addresses.isEmpty()) {
                 Address addr = addresses.get(0);
                 
+                // FIXED GLITCH #3: Ensure the fullAddress matches the Automatic Mode quality
                 details.fullAddress = addr.getAddressLine(0);
-                details.pincode = addr.getPostalCode() != null ? addr.getPostalCode() : "";
-                details.state = addr.getAdminArea() != null ? addr.getAdminArea() : "";
-                details.country = addr.getCountryName() != null ? addr.getCountryName() : "";
-                details.city = addr.getLocality() != null ? addr.getLocality() : "";
+                
+                // FIXED ISSUE #2: Strip brackets from all components
+                details.pincode = (addr.getPostalCode() != null ? addr.getPostalCode() : "").replace("(", "").replace(")", "");
+                details.state = (addr.getAdminArea() != null ? addr.getAdminArea() : "").replace("(", "").replace(")", "");
+                details.country = (addr.getCountryName() != null ? addr.getCountryName() : "").replace("(", "").replace(")", "");
+                details.city = (addr.getLocality() != null ? addr.getLocality() : "").replace("(", "").replace(")", "");
 
-                // Logic #3: Landmark extraction (Everything before City/State)
+                // Logic #3: Refined Landmark extraction
                 StringBuilder landmarkBuilder = new StringBuilder();
                 if (addr.getFeatureName() != null) landmarkBuilder.append(addr.getFeatureName());
                 if (addr.getSubLocality() != null && !addr.getSubLocality().equals(addr.getFeatureName())) {
                     if (landmarkBuilder.length() > 0) landmarkBuilder.append(", ");
                     landmarkBuilder.append(addr.getSubLocality());
                 }
-                details.landmark = landmarkBuilder.toString();
+                details.landmark = landmarkBuilder.toString().replace("(", "").replace(")", "");
                 
                 return details;
             }
@@ -166,15 +168,17 @@ public class GeocodingUtils {
                 
                 JSONObject addrJson = json.optJSONObject("address");
                 if (addrJson != null) {
-                    details.pincode = addrJson.optString("postcode", "");
-                    details.state = addrJson.optString("state", "");
-                    details.country = addrJson.optString("country", "");
-                    details.city = addrJson.optString("city", addrJson.optString("town", ""));
+                    // FIXED ISSUE #2: Strip brackets from OSM output
+                    details.pincode = addrJson.optString("postcode", "").replace("(", "").replace(")", "");
+                    details.state = addrJson.optString("state", "").replace("(", "").replace(")", "");
+                    details.country = addrJson.optString("country", "").replace("(", "").replace(")", "");
+                    details.city = addrJson.optString("city", addrJson.optString("town", "")).replace("(", "").replace(")", "");
                     
-                    // Logic #3: Landmark extraction for OSM (amenity, shop, or road)
+                    // Logic #3: Improved Landmark extraction for OSM
                     String poi = addrJson.optString("amenity", addrJson.optString("shop", ""));
                     String road = addrJson.optString("road", "");
-                    details.landmark = (poi.isEmpty()) ? road : poi + (road.isEmpty() ? "" : ", " + road);
+                    String rawLandmark = (poi.isEmpty()) ? road : poi + (road.isEmpty() ? "" : ", " + road);
+                    details.landmark = rawLandmark.replace("(", "").replace(")", "");
                 }
             }
         } catch (Exception e) {
