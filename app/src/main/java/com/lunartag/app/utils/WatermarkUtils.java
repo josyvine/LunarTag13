@@ -24,6 +24,7 @@ import java.util.Hashtable;
  * UPDATED: Optimized for Smart Workplace text lengths and automated landmark strings.
  * FIXED: Balanced QR size and vertical alignment to match the "working" rendering.
  * FIXED: Resolved truncation by calculating block height from branding stack height.
+ * FIXED: Decoupled QR scaling and implemented dynamic font reduction for long addresses.
  */
 public class WatermarkUtils {
 
@@ -52,7 +53,8 @@ public class WatermarkUtils {
         // --- 1. Configure Main Text Paint ---
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(width / 40.0f); 
+        float baseTextSize = width / 40.0f;
+        textPaint.setTextSize(baseTextSize); 
         textPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
 
         // --- 2. Configure Branding Paint (App Name) ---
@@ -70,12 +72,12 @@ public class WatermarkUtils {
         float textHeight = textPaint.descent() - textPaint.ascent();
         float lineSpacing = 10f;
         
-        // Precise calculation of text block height to avoid empty space
+        // Precise calculation of text block height
         float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
         
         // Define Branding sizes (Logo and QR)
-        // FIXED: Set qrSize to 280 to reach from brand logo to footer without truncation
-        int qrSize = 280; 
+        // FIXED: Constant QR size to prevent "pathetic" enlargement on long addresses
+        int qrSize = 240; 
         int logoSize = (int) (width * 0.08);
         if (logoSize < 50) logoSize = 50;
         
@@ -85,10 +87,11 @@ public class WatermarkUtils {
         float gapBetweenLogoAndQr = 15f;
 
         // Calculate heights for both sides
+        // FIXED: The branding stack height is now the master anchor for the block height
         float brandingStackHeight = topPadding + logoSize + gapBetweenLogoAndQr + (showQr ? qrSize : 0) + bottomPadding;
         float textStackHeight = totalTextHeight + (topPadding * 2);
         
-        // Determine the final height of the black bar
+        // Final block height is stable
         float blockHeight = Math.max(brandingStackHeight, textStackHeight);
 
         // Map minimum height check
@@ -122,55 +125,54 @@ public class WatermarkUtils {
             Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, logoSize, logoSize, true);
 
             logoX = width - logoSize - 40; 
-            // FIXED: Logo is anchored to the top of the bar for consistent spacing
             logoY = watermarkTop + topPadding; 
 
             canvas.drawBitmap(scaledLogo, logoX, logoY, null);
 
             String appName = "Lunar Tag";
-            float textWidth = brandPaint.measureText(appName);
-            float brandTextX = logoX - textWidth - 20;
-            // Center the "Lunar Tag" text vertically with the logo
+            float brandTextWidth = brandPaint.measureText(appName);
+            float brandTextX = logoX - brandTextWidth - 20;
             float brandTextY = logoY + (logoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
 
             canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
 
-            // --- 7. Draw QR Code (Positioned strictly under Logo) ---
+            // --- 7. Draw QR Code (Fixed size, anchored under Logo) ---
             if (showQr && lat != null && lon != null) {
                 Bitmap qrBitmap = generateQrCodeBitmap(lat, lon, qrSize);
                 if (qrBitmap != null) {
-                    // Center QR code under the Logo icon
                     float qrX = logoX + (logoSize / 2f) - (qrBitmap.getWidth() / 2f);
-                    // FIXED: QR Y position is calculated relative to logo to ensure no overlap or truncation
                     float qrY = logoY + logoSize + gapBetweenLogoAndQr;
                     canvas.drawBitmap(qrBitmap, qrX, qrY, null);
                 }
             }
         }
 
-        // --- 8. Draw Main Text Lines ---
+        // --- 8. Draw Main Text Lines with Dynamic Scaling ---
         float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 50 : 40;
         
-        // SAFETY: QR area takes up space on right, give text approx 65% of width
-        float maxAllowedWidth = (width - (width * 0.35f));
+        // Text area takes up 65% of width to leave room for the fixed QR area
+        float maxAllowedWidth = (width - (width * 0.35f)) - textLeft;
 
-        // Center the entire text stack vertically within the generated blockHeight
         float currentY = watermarkTop + ((blockHeight - totalTextHeight) / 2f) - textPaint.ascent();
 
         for (String line : lines) {
             if (line != null) {
+                // FIXED: Font Scaling Logic. Instead of expanding the bar, we shrink the text.
+                float currentTextSize = baseTextSize;
+                textPaint.setTextSize(currentTextSize);
                 float lineWidth = textPaint.measureText(line);
-                if (lineWidth > maxAllowedWidth) {
-                    // Smart Scaling: Shrink font if the address/landmark is too long for the resolution
-                    float originalTextSize = textPaint.getTextSize();
-                    float scaleFactor = maxAllowedWidth / lineWidth;
-                    textPaint.setTextSize(originalTextSize * scaleFactor);
-                    canvas.drawText(line, textLeft, currentY, textPaint);
-                    textPaint.setTextSize(originalTextSize); 
-                } else {
-                    canvas.drawText(line, textLeft, currentY, textPaint);
+                
+                // Programmatically scale down if the address is a long string
+                while (lineWidth > maxAllowedWidth && currentTextSize > 10) {
+                    currentTextSize -= 1.0f;
+                    textPaint.setTextSize(currentTextSize);
+                    lineWidth = textPaint.measureText(line);
                 }
                 
+                canvas.drawText(line, textLeft, currentY, textPaint);
+                
+                // Reset size for next line calculation
+                textPaint.setTextSize(baseTextSize);
                 currentY += (textHeight + lineSpacing); 
             }
         }
@@ -181,12 +183,11 @@ public class WatermarkUtils {
      */
     private static Bitmap generateQrCodeBitmap(String lat, String lon, int size) {
         try {
-            // URL format that opens directly in Google Maps app or browser
             String uri = "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
             
             Hashtable<EncodeHintType, Object> hints = new Hashtable<>();
             hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
-            hints.put(EncodeHintType.MARGIN, 1); // Minimum white border
+            hints.put(EncodeHintType.MARGIN, 1); 
 
             BitMatrix bitMatrix = new MultiFormatWriter().encode(uri, BarcodeFormat.QR_CODE, size, size, hints);
             int width = bitMatrix.getWidth();
@@ -196,7 +197,6 @@ public class WatermarkUtils {
             for (int y = 0; y < height; y++) {
                 int offset = y * width;
                 for (int x = 0; x < width; x++) {
-                    // Use White for QR modules and Transparent for background
                     pixels[offset + x] = bitMatrix.get(x, y) ? Color.WHITE : Color.TRANSPARENT;
                 }
             }
