@@ -19,6 +19,7 @@ import java.util.Locale;
 /**
  * Utility class to handle robust geocoding with retry logic and OSM fallback.
  * UPDATED: Unified address quality and removed brackets from all outputs (Glitch #3 / Issue #2).
+ * FIXED: Strictly filters out Plus Codes and "Unnamed" segments to resolve "pathetic" manual geotags (Glitch #2).
  */
 public class GeocodingUtils {
 
@@ -41,7 +42,7 @@ public class GeocodingUtils {
     /**
      * Attempts to get an address using Native Geocoder (with retries) 
      * and falls back to OpenStreetMap if native fails.
-     * Used by Automatic mode.
+     * Used by Automatic mode and synchronized with Manual mode.
      */
     public static String getAddressWithFallback(Context context, Location location) {
         if (location == null) return "Location Unknown";
@@ -57,10 +58,26 @@ public class GeocodingUtils {
             try {
                 List<Address> addresses = geocoder.getFromLocation(lat, lon, 1);
                 if (addresses != null && !addresses.isEmpty()) {
-                    String addressLine = addresses.get(0).getAddressLine(0);
+                    Address addr = addresses.get(0);
+                    String addressLine = addr.getAddressLine(0);
+                    
+                    // FIXED GLITCH #2: Check if line 0 is a Plus Code or Unnamed
+                    if (addressLine != null && (addressLine.contains("+") || addressLine.toLowerCase().contains("unnamed"))) {
+                        // Attempt to find a better line in the same address object
+                        int maxLines = addr.getMaxAddressLineIndex();
+                        for (int j = 1; j <= maxLines; j++) {
+                            String altLine = addr.getAddressLine(j);
+                            if (altLine != null && !altLine.contains("+") && !altLine.toLowerCase().contains("unnamed")) {
+                                addressLine = altLine;
+                                break;
+                            }
+                        }
+                    }
+
                     if (addressLine != null && !addressLine.isEmpty()) {
                         broadcastLog(context, "System: Native Geocoder Success on attempt " + i, "info");
-                        return addressLine;
+                        // FIX ISSUE #2: Remove brackets
+                        return addressLine.replace("(", "").replace(")", "");
                     }
                 }
             } catch (Exception e) {
@@ -94,7 +111,8 @@ public class GeocodingUtils {
                 if (jsonObject.has("display_name")) {
                     String osmAddress = jsonObject.getString("display_name");
                     broadcastLog(context, "System: OSM Fallback Success.", "info");
-                    return osmAddress;
+                    // FIX ISSUE #2: Remove brackets
+                    return osmAddress.replace("(", "").replace(")", "");
                 }
             } else {
                 broadcastLog(context, "Error: OSM API returned code " + conn.getResponseCode(), "error");
@@ -110,6 +128,7 @@ public class GeocodingUtils {
      * NEW: Performs reverse geocoding and parses components into an AddressDetails object.
      * FIXED GLITCH #3: Unified address logic with the fallback version for maximum accuracy.
      * FIXED ISSUE #2: Automatically strips brackets from all address components.
+     * FIXED GLITCH #2: Filters out Plus Codes to ensure manual refresh isn't "pathetic".
      */
     public static AddressDetails getDetailedAddress(Context context, Location location) {
         AddressDetails details = new AddressDetails();
@@ -124,8 +143,18 @@ public class GeocodingUtils {
             if (addresses != null && !addresses.isEmpty()) {
                 Address addr = addresses.get(0);
                 
-                // FIXED GLITCH #3: Ensure the fullAddress matches the Automatic Mode quality
-                details.fullAddress = addr.getAddressLine(0);
+                // FIXED GLITCH #3 & #2: Use high-quality fallback logic for the main address line
+                String bestAddress = addr.getAddressLine(0);
+                if (bestAddress != null && (bestAddress.contains("+") || bestAddress.toLowerCase().contains("unnamed"))) {
+                    for (int j = 1; j <= addr.getMaxAddressLineIndex(); j++) {
+                        String alt = addr.getAddressLine(j);
+                        if (alt != null && !alt.contains("+") && !alt.toLowerCase().contains("unnamed")) {
+                            bestAddress = alt;
+                            break;
+                        }
+                    }
+                }
+                details.fullAddress = (bestAddress != null ? bestAddress : "").replace("(", "").replace(")", "");
                 
                 // FIXED ISSUE #2: Strip brackets from all components
                 details.pincode = (addr.getPostalCode() != null ? addr.getPostalCode() : "").replace("(", "").replace(")", "");
@@ -135,7 +164,9 @@ public class GeocodingUtils {
 
                 // Logic #3: Refined Landmark extraction
                 StringBuilder landmarkBuilder = new StringBuilder();
-                if (addr.getFeatureName() != null) landmarkBuilder.append(addr.getFeatureName());
+                if (addr.getFeatureName() != null && !addr.getFeatureName().contains("+")) {
+                    landmarkBuilder.append(addr.getFeatureName());
+                }
                 if (addr.getSubLocality() != null && !addr.getSubLocality().equals(addr.getFeatureName())) {
                     if (landmarkBuilder.length() > 0) landmarkBuilder.append(", ");
                     landmarkBuilder.append(addr.getSubLocality());
@@ -164,7 +195,8 @@ public class GeocodingUtils {
                 reader.close();
 
                 JSONObject json = new JSONObject(response.toString());
-                details.fullAddress = json.optString("display_name", "");
+                String osmFull = json.optString("display_name", "");
+                details.fullAddress = osmFull.replace("(", "").replace(")", "");
                 
                 JSONObject addrJson = json.optJSONObject("address");
                 if (addrJson != null) {
