@@ -22,8 +22,8 @@ import java.util.Hashtable;
 /**
  * A utility class with static methods for rendering the watermark onto a photo.
  * UPDATED: Optimized for Smart Workplace text lengths and automated landmark strings.
- * FIXED ISSUE #1: Increased QR code size for better scannability.
- * FIXED GLITCH #4: Resolved QR truncation and bad address rendering by adjusting canvas math.
+ * FIXED: Balanced QR size and vertical alignment to match the "working" rendering.
+ * FIXED: Resolved truncation by calculating block height from branding stack height.
  */
 public class WatermarkUtils {
 
@@ -52,13 +52,13 @@ public class WatermarkUtils {
         // --- 1. Configure Main Text Paint ---
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(width / 40.0f); // Slightly smaller text for address to fit better
+        textPaint.setTextSize(width / 40.0f); 
         textPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
 
         // --- 2. Configure Branding Paint (App Name) ---
         TextPaint brandPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        brandPaint.setColor(Color.YELLOW); // Yellow color looks professional on black
-        brandPaint.setTextSize(width / 35.0f); // Slightly larger/bolder than body text
+        brandPaint.setColor(Color.YELLOW); 
+        brandPaint.setTextSize(width / 35.0f); 
         brandPaint.setFakeBoldText(true);
         brandPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
 
@@ -70,25 +70,30 @@ public class WatermarkUtils {
         float textHeight = textPaint.descent() - textPaint.ascent();
         float lineSpacing = 10f;
         
-        // Height calculation:
-        // Precise calculation of text block height to avoid empty space
+        // Precise calculation of text block height
         float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
         
-        // FIXED GLITCH #4: Increased padding from 60 to 100 for higher resolution safety
-        float blockHeight = totalTextHeight + 100;
+        // Define Branding sizes (Logo and QR)
+        // FIXED: Reduced QR size to 220 to match the "working" rendering look
+        int qrSize = 220; 
+        int logoSize = (int) (width * 0.08);
+        if (logoSize < 50) logoSize = 50;
+        
+        // Vertical Spacing
+        float topPadding = 40f;
+        float bottomPadding = 40f;
+        float gapBetweenLogoAndQr = 15f;
 
-        // NEW: Adjust block height if QR code is enabled
-        // FIXED GLITCH #4: Increased bottom padding (80) to prevent truncation of the 350px QR
-        if (showQr) {
-            float qrSideHeight = (width * 0.08f) + 350 + 80; // Logo size + New 350px QR + Safe Padding
-            if (qrSideHeight > blockHeight) {
-                blockHeight = qrSideHeight;
-            }
-        }
+        // Calculate heights for both sides
+        float brandingStackHeight = topPadding + logoSize + gapBetweenLogoAndQr + (showQr ? qrSize : 0) + bottomPadding;
+        float textStackHeight = totalTextHeight + (topPadding * 2);
+        
+        // Determine the final height of the black bar
+        float blockHeight = Math.max(brandingStackHeight, textStackHeight);
 
-        // Ensure block is tall enough for the map if map exists
-        if (mapBitmap != null && mapBitmap.getHeight() + 40 > blockHeight) {
-            blockHeight = mapBitmap.getHeight() + 40;
+        // Map minimum height check
+        if (mapBitmap != null && mapBitmap.getHeight() + 80 > blockHeight) {
+            blockHeight = mapBitmap.getHeight() + 80;
         }
 
         float watermarkTop = height - blockHeight;
@@ -112,55 +117,51 @@ public class WatermarkUtils {
 
         float logoX = 0;
         float logoY = 0;
-        int targetLogoSize = 0;
 
         if (logo != null) {
-            targetLogoSize = (int) (width * 0.09); // Increased logo size slightly
-            if (targetLogoSize < 60) targetLogoSize = 60; 
+            Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, logoSize, logoSize, true);
 
-            Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, targetLogoSize, targetLogoSize, true);
-
-            logoX = width - targetLogoSize - 30; 
-            // FIXED GLITCH #4: Adjusted vertical offset for logo to align with new block height
-            logoY = watermarkTop + 40; 
+            logoX = width - logoSize - 40; 
+            // FIXED: Logo is anchored to the top of the bar for consistent spacing
+            logoY = watermarkTop + topPadding; 
 
             canvas.drawBitmap(scaledLogo, logoX, logoY, null);
 
             String appName = "Lunar Tag";
             float textWidth = brandPaint.measureText(appName);
             float brandTextX = logoX - textWidth - 20;
-            // Center text vertically relative to logo
-            float brandTextY = logoY + (targetLogoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
+            // Center the "Lunar Tag" text vertically with the logo
+            float brandTextY = logoY + (logoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
 
             canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
 
-            // --- NEW: Draw QR Code (Beneath Logo) ---
+            // --- 7. Draw QR Code (Positioned strictly under Logo) ---
             if (showQr && lat != null && lon != null) {
-                Bitmap qrBitmap = generateQrCodeBitmap(lat, lon);
+                Bitmap qrBitmap = generateQrCodeBitmap(lat, lon, qrSize);
                 if (qrBitmap != null) {
-                    // Position QR directly below the logo with a small gap
-                    float qrX = logoX + (targetLogoSize / 2f) - (qrBitmap.getWidth() / 2f);
-                    // FIXED GLITCH #4: Increased gap to prevent logo/QR overlap
-                    float qrY = logoY + targetLogoSize + 20; 
+                    // Center QR code under the Logo icon
+                    float qrX = logoX + (logoSize / 2f) - (qrBitmap.getWidth() / 2f);
+                    // FIXED: QR Y position is calculated relative to logo to ensure no overlap or truncation
+                    float qrY = logoY + logoSize + gapBetweenLogoAndQr;
                     canvas.drawBitmap(qrBitmap, qrX, qrY, null);
                 }
             }
         }
 
-        // --- 7. Draw Main Text Lines ---
+        // --- 8. Draw Main Text Lines ---
         float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 50 : 40;
         
-        // FIXED GLITCH #4: Increased right margin (0.35 instead of 0.30) to give the 350px QR more room
+        // SAFETY: QR area takes up space on right, give text approx 65% of width
         float maxAllowedWidth = (width - (width * 0.35f));
 
-        // Center the text block vertically within the blockHeight
+        // Center the entire text stack vertically within the generated blockHeight
         float currentY = watermarkTop + ((blockHeight - totalTextHeight) / 2f) - textPaint.ascent();
 
         for (String line : lines) {
             if (line != null) {
                 float lineWidth = textPaint.measureText(line);
                 if (lineWidth > maxAllowedWidth) {
-                    // Smart Scaling: Shrink font for this line if it's a long landmark description
+                    // Smart Scaling: Shrink font if the address/landmark is too long for the resolution
                     float originalTextSize = textPaint.getTextSize();
                     float scaleFactor = maxAllowedWidth / lineWidth;
                     textPaint.setTextSize(originalTextSize * scaleFactor);
@@ -176,16 +177,13 @@ public class WatermarkUtils {
     }
 
     /**
-     * NEW Helper: Generates a QR Code bitmap targeting a Google Maps URL.
-     * FIXED ISSUE #1: Increased size to 350px for high-quality scannability.
+     * Helper: Generates a QR Code bitmap targeting a Google Maps URL.
      */
-    private static Bitmap generateQrCodeBitmap(String lat, String lon) {
+    private static Bitmap generateQrCodeBitmap(String lat, String lon, int size) {
         try {
             // URL format that opens directly in Google Maps app or browser
             String uri = "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
             
-            // FIXED: Increased from 200 to 350 for better rendering
-            int size = 350; 
             Hashtable<EncodeHintType, Object> hints = new Hashtable<>();
             hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
             hints.put(EncodeHintType.MARGIN, 1); // Minimum white border
