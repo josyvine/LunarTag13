@@ -15,6 +15,7 @@ import java.util.List;
  * Data Access Object for the manual_locations table.
  * Supports Logic #1 (Multi-Location), Logic #3 (Auto-Switch), and Logic #4 (Auto-Create).
  * UPDATED: Refined proximity query to resolve Glitch #2 (Persistent Red Blink).
+ * UPDATED: Added multi-select deletion support for the Workplace Manager.
  */
 @Dao
 public interface ManualLocationDao {
@@ -63,10 +64,17 @@ public interface ManualLocationDao {
     void updateLocation(ManualLocation location);
 
     /**
-     * Deletes a specific workplace profile.
+     * Deletes a specific workplace profile by its ID.
      */
     @Query("DELETE FROM manual_locations WHERE id = :id")
     void deleteLocationById(long id);
+
+    /**
+     * NEW: Deletes multiple workplace profiles in a single query.
+     * Supports the multi-select deletion feature in the Workplace Manager UI.
+     */
+    @Query("DELETE FROM manual_locations WHERE id IN (:ids)")
+    void deleteLocations(List<Long> ids);
 
     /**
      * Logic #1: A transaction to safely switch the primary workplace.
