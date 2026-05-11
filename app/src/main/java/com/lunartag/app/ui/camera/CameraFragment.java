@@ -201,6 +201,7 @@ public class CameraFragment extends Fragment {
     /**
      * LOGIC #2, #3, and #4 Implementation.
      * Automatically refreshes, warns of mismatch, and auto-switches or auto-adds workplaces.
+     * UPDATED: Uses synchronized Geocoding logic to prevent "pathetic" address results.
      */
     private void performSmartWorkplaceCheck(Location currentGps) {
         if (currentGps == null) return;
@@ -240,19 +241,21 @@ public class CameraFragment extends Fragment {
                 } else {
                     // Logic #4: No match found - Auto Create new Workplace Profile
                     logToScreen("Smart Sync: New Workplace detected. Auto-creating...");
+                    
+                    // FIXED GLITCH #2: Using the synchronized robust geocoder logic from Automatic Mode
                     GeocodingUtils.AddressDetails details = GeocodingUtils.getDetailedAddress(requireContext(), currentGps);
                     
                     ManualLocation newWorkplace = new ManualLocation();
                     
                     // FIXED GLITCH #3: Clean address parsing for auto-created profile names
-                    newWorkplace.locationName = details.city.isEmpty() ? "New Workplace" : details.city;
+                    newWorkplace.locationName = details.landmark.isEmpty() ? (details.city.isEmpty() ? "New Workplace" : details.city) : details.landmark;
                     
                     // FIX ISSUE #2: Clean brackets from landmark in auto-refresh logic
                     newWorkplace.landmark = details.landmark.replace("(", "").replace(")", "");
                     
-                    newWorkplace.pincode = details.pincode;
-                    newWorkplace.state = details.state;
-                    newWorkplace.country = details.country;
+                    newWorkplace.pincode = details.pincode.replace("(", "").replace(")", "");
+                    newWorkplace.state = details.state.replace("(", "").replace(")", "");
+                    newWorkplace.country = details.country.replace("(", "").replace(")", "");
                     newWorkplace.latitude = currentGps.getLatitude();
                     newWorkplace.longitude = currentGps.getLongitude();
                     newWorkplace.isActive = true;
@@ -273,13 +276,13 @@ public class CameraFragment extends Fragment {
         String cleanLandmark = loc.landmark.replace("(", "").replace(")", "");
 
         prefs.edit()
-                .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, loc.locationName)
+                .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, loc.locationName.replace("(", "").replace(")", ""))
                 .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, cleanLandmark)
-                .putString(ManualLocationDialog.KEY_MANUAL_PINCODE, loc.pincode)
+                .putString(ManualLocationDialog.KEY_MANUAL_PINCODE, loc.pincode.replace("(", "").replace(")", ""))
                 .putString(ManualLocationDialog.KEY_MANUAL_LAT, String.valueOf(loc.latitude))
                 .putString(ManualLocationDialog.KEY_MANUAL_LON, String.valueOf(loc.longitude))
-                .putString(ManualLocationDialog.KEY_MANUAL_STATE, loc.state)
-                .putString(ManualLocationDialog.KEY_MANUAL_COUNTRY, loc.country)
+                .putString(ManualLocationDialog.KEY_MANUAL_STATE, loc.state.replace("(", "").replace(")", ""))
+                .putString(ManualLocationDialog.KEY_MANUAL_COUNTRY, loc.country.replace("(", "").replace(")", ""))
                 .apply();
         
         new android.os.Handler(Looper.getMainLooper()).post(() -> {
@@ -458,16 +461,16 @@ public class CameraFragment extends Fragment {
             if (isManualMode) {
                 logToScreen("System: Manual Override detected.");
                 
-                // FIXED GLITCH #3: Clean construction of final address string without messy brackets
-                String locName = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address");
+                // FIXED GLITCH #3 & ISSUE #2: Clean construction of final address string without messy brackets
+                String locName = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LOC_1, "No Address").replace("(", "").replace(")", "");
                 String landmark = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LANDMARK, "").replace("(", "").replace(")", "");
                 
                 // Use a clean comma separator for the watermark line
                 finalAddress = locName + (landmark.isEmpty() ? "" : ", " + landmark);
 
-                finalManualSubLine = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_STATE, "") + ", " +
-                                     settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_COUNTRY, "") + " - " +
-                                     settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_PINCODE, "");
+                finalManualSubLine = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_STATE, "").replace("(", "").replace(")", "") + ", " +
+                                     settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_COUNTRY, "").replace("(", "").replace(")", "") + " - " +
+                                     settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_PINCODE, "").replace("(", "").replace(")", "");
 
                 qrLat = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LAT, "0.0");
                 qrLon = settingsPrefs.getString(ManualLocationDialog.KEY_MANUAL_LON, "0.0");
@@ -493,6 +496,7 @@ public class CameraFragment extends Fragment {
                     finalLon = location.getLongitude();
                 }
 
+                // FIXED: getAddressFromLocation already calls our robust updated GeocodingUtils
                 finalAddress = getAddressFromLocation(location);
                 qrLat = String.valueOf(finalLat);
                 qrLon = String.valueOf(finalLon);
@@ -510,15 +514,13 @@ public class CameraFragment extends Fragment {
 
                 // --- FIX: LOAD COMPANY NAME FROM SETTINGS ---
                 String companyName = settingsPrefs.getString(KEY_COMPANY_NAME, "My Company"); 
-                // --------------------------------------------
 
                 // --- FIX: REMOVED ':ss' (SECONDS) FROM FORMAT ---
                 SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy hh:mm a", Locale.US);
-                // ------------------------------------------------
 
                 String timeString = sdf.format(new Date(assignedTime));
 
-                // FIXED GLITCH #4: Ensure address components are short to prevent bad watermark rendering
+                // FIXED GLITCH #4: Address components are passed cleanly to updated WatermarkUtils (File 1)
                 ArrayList<String> linesList = new ArrayList<>();
                 linesList.add("GPS Map Camera");
                 linesList.add(companyName);
@@ -533,11 +535,10 @@ public class CameraFragment extends Fragment {
 
                 logToScreen("System: Applying Watermark...");
 
-                // --- UPDATED: Pass QR data to Watermark Utility ---
+                // --- UPDATED: Passing data to improved Watermark Utility with fixed QR scaling ---
                 WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines, qrLat, qrLon, isQrEnabled);
-                // -------------------------------------------------------------
 
-                // --- CRITICAL CHANGE: STORAGE LOGIC ---
+                // --- STORAGE LOGIC ---
                 String absolutePath = null;
                 logToScreen("System: Saving File...");
 
@@ -573,7 +574,6 @@ public class CameraFragment extends Fragment {
 
                     // --- ENHANCEMENT: COPY TO CLIPBOARD ---
                     copyImageToClipboard(absolutePath);
-                    // --------------------------------------
 
                     new android.os.Handler(Looper.getMainLooper()).post(() -> {
                         Toast.makeText(getContext(), "Photo Saved!", Toast.LENGTH_SHORT).show();
@@ -596,7 +596,7 @@ public class CameraFragment extends Fragment {
         }
     }
 
-    // --- Handle Folder Selection Result (NEW) ---
+    // --- Handle Folder Selection Result ---
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -612,7 +612,6 @@ public class CameraFragment extends Fragment {
             }
         }
     }
-    // --------------------------------------------
 
     private long getNextScheduledTimestamp(long fallbackTime) {
         SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_SCHEDULE, Context.MODE_PRIVATE);
@@ -721,7 +720,6 @@ public class CameraFragment extends Fragment {
             AppDatabase db = AppDatabase.getDatabase(getContext());
             PhotoDao dao = db.photoDao();
 
-            // --- FIXED: Capture ID and Schedule Alarm ---
             long id = dao.insertPhoto(photo);
 
             logToScreen("System: Scheduling Alarm for Photo ID: " + id);
@@ -731,7 +729,6 @@ public class CameraFragment extends Fragment {
                 filePath,
                 assignedTime
             );
-            // --------------------------------------------
 
         } catch (Exception e) {
             logToScreen("DB ERROR: " + e.getMessage());
@@ -739,7 +736,6 @@ public class CameraFragment extends Fragment {
     }
 
     private String getAddressFromLocation(Location location) {
-        // --- UPDATED: NOW CALLS THE ROBUST GEOCODER UTILITY ---
         return GeocodingUtils.getAddressWithFallback(requireContext(), location);
     }
 
@@ -753,28 +749,20 @@ public class CameraFragment extends Fragment {
         return true;
     }
 
-    /**
-     * SILENT CLIPBOARD COPY METHOD
-     * Uses the correct existing fileprovider to prevent crashes.
-     */
     private void copyImageToClipboard(String absolutePath) {
         Context context = getContext();
         if (context == null || absolutePath == null) return;
 
         try {
             Uri uri;
-            // 1. Check if path is already a Content URI (from StorageUtils / SAF)
             if (absolutePath.startsWith("content://")) {
                 uri = Uri.parse(absolutePath);
             } else {
-                // 2. Standard Internal File: Needs FileProvider
                 File file = new File(absolutePath);
-                // FIX: Use '.fileprovider' to match original Manifest
                 String authority = context.getPackageName() + ".fileprovider"; 
                 uri = FileProvider.getUriForFile(context, authority, file);
             }
 
-            // 3. Set to Clipboard
             ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
             if (clipboard != null) {
                 ClipData clip = ClipData.newUri(context.getContentResolver(), "Captured Image", uri);
