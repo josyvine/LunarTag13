@@ -22,7 +22,8 @@ import java.util.Hashtable;
 /**
  * A utility class with static methods for rendering the watermark onto a photo.
  * UPDATED: Optimized for Smart Workplace text lengths and automated landmark strings.
- * FIXED: Increased QR code size for better scannability (Issue #1).
+ * FIXED ISSUE #1: Increased QR code size for better scannability.
+ * FIXED GLITCH #4: Resolved QR truncation and bad address rendering by adjusting canvas math.
  */
 public class WatermarkUtils {
 
@@ -73,13 +74,13 @@ public class WatermarkUtils {
         // Precise calculation of text block height to avoid empty space
         float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
         
-        // Base block height with 30px padding top and bottom
-        float blockHeight = totalTextHeight + 60;
+        // FIXED GLITCH #4: Increased padding from 60 to 100 for higher resolution safety
+        float blockHeight = totalTextHeight + 100;
 
         // NEW: Adjust block height if QR code is enabled
-        // FIXED ISSUE #1: Updated height calculation to match the new 350px QR size
+        // FIXED GLITCH #4: Increased bottom padding (80) to prevent truncation of the 350px QR
         if (showQr) {
-            float qrSideHeight = (width * 0.08f) + 350 + 40; // Logo size + New larger QR size + padding
+            float qrSideHeight = (width * 0.08f) + 350 + 80; // Logo size + New 350px QR + Safe Padding
             if (qrSideHeight > blockHeight) {
                 blockHeight = qrSideHeight;
             }
@@ -120,7 +121,8 @@ public class WatermarkUtils {
             Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, targetLogoSize, targetLogoSize, true);
 
             logoX = width - targetLogoSize - 30; 
-            logoY = watermarkTop + 25; // Constant padding from top of bar
+            // FIXED GLITCH #4: Adjusted vertical offset for logo to align with new block height
+            logoY = watermarkTop + 40; 
 
             canvas.drawBitmap(scaledLogo, logoX, logoY, null);
 
@@ -138,7 +140,8 @@ public class WatermarkUtils {
                 if (qrBitmap != null) {
                     // Position QR directly below the logo with a small gap
                     float qrX = logoX + (targetLogoSize / 2f) - (qrBitmap.getWidth() / 2f);
-                    float qrY = logoY + targetLogoSize + 10; 
+                    // FIXED GLITCH #4: Increased gap to prevent logo/QR overlap
+                    float qrY = logoY + targetLogoSize + 20; 
                     canvas.drawBitmap(qrBitmap, qrX, qrY, null);
                 }
             }
@@ -147,11 +150,8 @@ public class WatermarkUtils {
         // --- 7. Draw Main Text Lines ---
         float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 50 : 40;
         
-        float maxAllowedWidth = (width - 60);
-        if (logo != null) {
-            // Give more room for long workplace addresses but respect the logo/QR boundary
-            maxAllowedWidth = (width - (width * 0.30f)); 
-        }
+        // FIXED GLITCH #4: Increased right margin (0.35 instead of 0.30) to give the 350px QR more room
+        float maxAllowedWidth = (width - (width * 0.35f));
 
         // Center the text block vertically within the blockHeight
         float currentY = watermarkTop + ((blockHeight - totalTextHeight) / 2f) - textPaint.ascent();
@@ -184,7 +184,7 @@ public class WatermarkUtils {
             // URL format that opens directly in Google Maps app or browser
             String uri = "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
             
-            // FIXED: Increased from 200 to 350
+            // FIXED: Increased from 200 to 350 for better rendering
             int size = 350; 
             Hashtable<EncodeHintType, Object> hints = new Hashtable<>();
             hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
