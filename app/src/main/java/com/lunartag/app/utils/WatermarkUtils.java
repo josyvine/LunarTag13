@@ -70,12 +70,12 @@ public class WatermarkUtils {
         float textHeight = textPaint.descent() - textPaint.ascent();
         float lineSpacing = 10f;
         
-        // Precise calculation of text block height
+        // Precise calculation of text block height to avoid empty space
         float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
         
         // Define Branding sizes (Logo and QR)
-        // FIXED: Reduced QR size to 220 to match the "working" rendering look
-        int qrSize = 220; 
+        // FIXED: Set qrSize to 280 to reach from brand logo to footer without truncation
+        int qrSize = 280; 
         int logoSize = (int) (width * 0.08);
         if (logoSize < 50) logoSize = 50;
         
