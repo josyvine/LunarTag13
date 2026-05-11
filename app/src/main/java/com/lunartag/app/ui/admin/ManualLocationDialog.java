@@ -1,11 +1,13 @@
 package com.lunartag.app.ui.admin;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -28,8 +30,9 @@ import java.util.concurrent.Executors;
 
 /**
  * A full-screen DialogFragment that allows users to manage multiple workplace profiles.
- * This file integrates the Save logic and the List Selection logic (Logic #1).
+ * This file integrates the Save logic, List Selection, and Multi-Delete logic (Logic #1).
  * UPDATED: Optimized activation logic and coordinate precision to resolve Glitch #2.
+ * UPDATED: Added Delete logic for single/multiple workplace profiles (Glitch #1).
  */
 public class ManualLocationDialog extends DialogFragment {
 
@@ -50,6 +53,7 @@ public class ManualLocationDialog extends DialogFragment {
     private TextInputEditText editLoc1, editLandmark, editPincode, editLat, editLon, editState, editCountry;
     private SwitchMaterial switchQr, switchAutoDetect;
     private SharedPreferences prefs;
+    private View btnDeleteSelection; // New Delete Button
 
     // Workplace List Components
     private RecyclerView recyclerView;
@@ -80,6 +84,15 @@ public class ManualLocationDialog extends DialogFragment {
             // User selected an existing workplace from the list
             activateExistingWorkplace(location);
         });
+
+        // FIXED GLITCH #1: Setup Deletion Selection Listener
+        btnDeleteSelection = view.findViewById(R.id.btn_delete_workplaces); // Ensure this ID exists in your layout
+        adapter.setSelectionListener(count -> {
+            if (btnDeleteSelection != null) {
+                btnDeleteSelection.setVisibility(count > 0 ? View.VISIBLE : View.GONE);
+            }
+        });
+        
         recyclerView.setAdapter(adapter);
 
         // 2. Initialize Form Views
@@ -94,12 +107,23 @@ public class ManualLocationDialog extends DialogFragment {
         switchQr = view.findViewById(R.id.switch_manual_qr);
         switchAutoDetect = view.findViewById(R.id.switch_auto_workplace_detect);
 
-        toolbar.setNavigationOnClickListener(v -> dismiss());
+        toolbar.setNavigationOnClickListener(v -> {
+            if (adapter.isSelectionMode()) {
+                adapter.clearSelection();
+            } else {
+                dismiss();
+            }
+        });
 
         loadSavedData();
         loadWorkplaceList();
 
         view.findViewById(R.id.btn_save_manual_location).setOnClickListener(v -> saveNewWorkplace());
+        
+        // Handle Multi-Delete Click
+        if (btnDeleteSelection != null) {
+            btnDeleteSelection.setOnClickListener(v -> confirmAndPerformDeletion());
+        }
 
         return view;
     }
@@ -111,6 +135,27 @@ public class ManualLocationDialog extends DialogFragment {
                 getActivity().runOnUiThread(() -> adapter.setLocations(locations));
             }
         });
+    }
+
+    private void confirmAndPerformDeletion() {
+        List<Long> ids = adapter.getSelectedIds();
+        new AlertDialog.Builder(getContext())
+                .setTitle("Delete Workplaces")
+                .setMessage("Are you sure you want to delete " + ids.size() + " saved workplace(s)?")
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    executorService.execute(() -> {
+                        manualLocationDao.deleteLocations(ids);
+                        if (getActivity() != null) {
+                            getActivity().runOnUiThread(() -> {
+                                adapter.clearSelection();
+                                loadWorkplaceList();
+                                Toast.makeText(getContext(), "Workplaces Deleted", Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    });
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void loadSavedData() {
@@ -142,8 +187,8 @@ public class ManualLocationDialog extends DialogFragment {
         workplace.landmark = landmarkClean;
         
         workplace.pincode = pin;
-        workplace.state = editState.getText().toString().trim();
-        workplace.country = editCountry.getText().toString().trim();
+        workplace.state = editState.getText().toString().trim().replace("(", "").replace(")", "");
+        workplace.country = editCountry.getText().toString().trim().replace("(", "").replace(")", "");
         try {
             workplace.latitude = Double.parseDouble(editLat.getText().toString());
             workplace.longitude = Double.parseDouble(editLon.getText().toString());
@@ -187,15 +232,15 @@ public class ManualLocationDialog extends DialogFragment {
 
         prefs.edit()
                 .putBoolean(KEY_LOCATION_MODE_MANUAL, true)
-                .putString(KEY_MANUAL_LOC_1, loc.locationName)
+                .putString(KEY_MANUAL_LOC_1, loc.locationName.replace("(", "").replace(")", ""))
                 .putString(KEY_MANUAL_LANDMARK, landmarkClean)
-                .putString(KEY_MANUAL_PINCODE, loc.pincode)
+                .putString(KEY_MANUAL_PINCODE, loc.pincode.replace("(", "").replace(")", ""))
                 .putString(KEY_MANUAL_LAT, finalLat)
                 .putString(KEY_MANUAL_LON, finalLon)
-                .putString(KEY_MANUAL_STATE, loc.state)
-                .putString(KEY_MANUAL_COUNTRY, loc.country)
-                .putBoolean(KEY_MANUAL_QR_ENABLED, switchQr.isChecked())
-                .putBoolean(KEY_AUTO_WORKPLACE_DETECTION, switchAutoDetect.isChecked())
+                .putString(KEY_MANUAL_STATE, loc.state.replace("(", "").replace(")", ""))
+                .putString(KEY_MANUAL_COUNTRY, loc.country.replace("(", "").replace(")", ""))
+                .putBoolean(KEY_MANUAL_QR_ENABLED, switchQr != null ? switchQr.isChecked() : false)
+                .putBoolean(KEY_AUTO_WORKPLACE_DETECTION, switchAutoDetect != null ? switchAutoDetect.isChecked() : true)
                 .apply();
         
         getParentFragmentManager().setFragmentResult("manual_loc_update", new Bundle());
