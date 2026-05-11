@@ -13,7 +13,7 @@ import com.lunartag.app.ui.admin.ManualLocationDialog;
 /**
  * Orchestrates the Smart Workplace logic.
  * Handles Logic #3 (Landmark Extraction) and Logic #4 (Auto-Creation).
- * UPDATED: Removed brackets from landmark extraction logic (Issue #2).
+ * UPDATED: Fixed Glitch #3 (Messy Address) and Issue #2 (Brackets).
  */
 public class WorkplaceManager {
 
@@ -32,66 +32,83 @@ public class WorkplaceManager {
 
     /**
      * Logic #3: Smart Landmark Extraction.
-     * Extracts descriptive landmarks (e.g., "Near Supplyco") from a global address.
-     * It identifies parts of the address that are local/descriptive and not administrative.
+     * FIXED GLITCH #3: Improved extraction to match the quality of Automatic Mode.
+     * It now avoids Plus Codes and extracts the most specific part of the address line.
      */
     public String extractSmartLandmark(GeocodingUtils.AddressDetails details) {
         if (details == null || details.fullAddress == null || details.fullAddress.isEmpty()) {
             return "General Area";
         }
 
-        // The logic: Start with the landmark identified by the Geocoder (Feature Name)
-        String landmark = details.landmark;
+        String landmark = "";
 
-        // Enhancement: If the landmark field is empty or just a house number, 
-        // we parse the full address string to find descriptive prepositions 
-        // like "Near", "Opposite", "Behind", etc., which works globally.
-        String fullAddr = details.fullAddress.toLowerCase();
-        String[] keywords = {"near", "opposite", "opp", "behind", "beside", "inside", "at"};
+        // 1. Try to take the specific landmark segments provided by the geocoder
+        if (details.landmark != null && !details.landmark.isEmpty()) {
+            // Avoid using technical "Plus Codes" as landmarks
+            if (!details.landmark.contains("+")) {
+                landmark = details.landmark;
+            }
+        }
 
-        for (String key : keywords) {
-            if (fullAddr.contains(key)) {
-                int startIndex = fullAddr.indexOf(key);
-                // Cut the string from the keyword until the next major separator (comma)
-                int endIndex = fullAddr.indexOf(",", startIndex);
-                if (endIndex == -1) endIndex = fullAddr.length();
-                
-                String descriptivePart = details.fullAddress.substring(startIndex, endIndex).trim();
-                // If this descriptive part is found, it becomes our primary landmark
-                if (descriptivePart.length() > 3) {
-                    landmark = descriptivePart;
-                    break;
+        // 2. If landmark is still empty/invalid, parse the first segment of the full address
+        if (landmark.isEmpty()) {
+            String[] segments = details.fullAddress.split(",");
+            if (segments.length > 0) {
+                String firstSegment = segments[0].trim();
+                // If the first segment is a Plus Code, try the second segment
+                if (firstSegment.contains("+") && segments.length > 1) {
+                    landmark = segments[1].trim();
+                } else {
+                    landmark = firstSegment;
                 }
             }
         }
 
-        // FIX ISSUE #2: If no descriptive keywords, use City + Pincode logic WITHOUT brackets
+        // 3. Last Resort: Search for descriptive keywords (Near, Opp, etc.)
+        if (landmark.length() < 5) {
+            String fullAddr = details.fullAddress.toLowerCase();
+            String[] keywords = {"near", "opposite", "opp", "behind", "beside", "inside", "at"};
+            for (String key : keywords) {
+                if (fullAddr.contains(key)) {
+                    int startIndex = fullAddr.indexOf(key);
+                    int endIndex = fullAddr.indexOf(",", startIndex);
+                    if (endIndex == -1) endIndex = fullAddr.length();
+                    String descriptivePart = details.fullAddress.substring(startIndex, endIndex).trim();
+                    if (descriptivePart.length() > 3) {
+                        landmark = descriptivePart;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fallback: City and Pincode without brackets
         if (landmark == null || landmark.isEmpty()) {
             landmark = details.city + " " + details.pincode;
         }
 
-        // FIX ISSUE #2: Final safety check to strip any brackets returned by the sensor/geocoder
-        if (landmark != null) {
-            landmark = landmark.replace("(", "").replace(")", "").trim();
-        }
-
-        return landmark;
+        // FIX ISSUE #2: Final safety check to strip any brackets from the result
+        return landmark.replace("(", "").replace(")", "").trim();
     }
 
     /**
      * Logic #4: Automated Workplace Creation.
-     * Silently creates and activates a new profile if no match is found.
+     * FIXED GLITCH #2: Uses descriptive landmark as location name to prevent generic duplicates.
      */
     public void createAndActivateNewWorkplace(Location location, GeocodingUtils.AddressDetails details) {
         ManualLocation newLoc = new ManualLocation();
         
-        // Use the extracted landmark and city for the profile name
         String landmark = extractSmartLandmark(details);
-        newLoc.locationName = details.city.isEmpty() ? "New Workplace" : details.city;
+        
+        // FIXED GLITCH #2: Set LocationName to the specific landmark (e.g. Canara Bank)
+        newLoc.locationName = landmark;
         newLoc.landmark = landmark;
         newLoc.pincode = details.pincode;
-        newLoc.state = details.state;
-        newLoc.country = details.country;
+        
+        // Ensure administrative fields are bracket-free
+        newLoc.state = details.state != null ? details.state.replace("(", "").replace(")", "") : "";
+        newLoc.country = details.country != null ? details.country.replace("(", "").replace(")", "") : "";
+        
         newLoc.latitude = location.getLatitude();
         newLoc.longitude = location.getLongitude();
         newLoc.isActive = true;
@@ -100,7 +117,7 @@ public class WorkplaceManager {
         new Thread(() -> {
             manualLocationDao.deactivateAll();
             manualLocationDao.insertLocation(newLoc);
-            Log.d(TAG, "Logic #4: Auto-created workplace at " + landmark);
+            Log.d(TAG, "Logic #4: Auto-created workplace profile: " + landmark);
         }).start();
 
         // Immediately update preferences for the watermark
@@ -111,11 +128,12 @@ public class WorkplaceManager {
      * Updates the shared preferences so WatermarkUtils uses the new data immediately.
      */
     private void updateActivePreferences(ManualLocation loc) {
-        // Ensure landmark is clean of brackets before saving to preferences
+        // Ensure all strings are clean of brackets
+        String cleanName = loc.locationName != null ? loc.locationName.replace("(", "").replace(")", "") : "Workplace";
         String cleanLandmark = loc.landmark != null ? loc.landmark.replace("(", "").replace(")", "") : "";
 
         prefs.edit()
-                .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, loc.locationName)
+                .putString(ManualLocationDialog.KEY_MANUAL_LOC_1, cleanName)
                 .putString(ManualLocationDialog.KEY_MANUAL_LANDMARK, cleanLandmark)
                 .putString(ManualLocationDialog.KEY_MANUAL_PINCODE, loc.pincode)
                 .putString(ManualLocationDialog.KEY_MANUAL_LAT, String.valueOf(loc.latitude))
