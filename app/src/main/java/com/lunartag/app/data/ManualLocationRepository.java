@@ -11,6 +11,7 @@ import java.util.concurrent.Executors;
 /**
  * Repository class to handle data operations for Manual Workplaces.
  * Supports Logic #1, #3, and #4.
+ * UPDATED: Added multi-selection deletion support for the Workplace Manager (Glitch #1).
  */
 public class ManualLocationRepository {
 
@@ -62,11 +63,21 @@ public class ManualLocationRepository {
     }
 
     /**
-     * Logic #1: Removes a workplace profile from the database.
+     * Logic #1: Removes a single workplace profile from the database.
      */
     public void deleteWorkplace(long id) {
         executorService.execute(() -> {
             manualLocationDao.deleteLocationById(id);
+        });
+    }
+
+    /**
+     * NEW: Removes multiple workplace profiles from the database.
+     * Supports the multi-select deletion feature in the Workplace Manager UI.
+     */
+    public void deleteWorkplaces(List<Long> ids) {
+        executorService.execute(() -> {
+            manualLocationDao.deleteLocations(ids);
         });
     }
 
