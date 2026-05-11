@@ -14,6 +14,7 @@ import java.util.List;
 /**
  * Data Access Object for the manual_locations table.
  * Supports Logic #1 (Multi-Location), Logic #3 (Auto-Switch), and Logic #4 (Auto-Create).
+ * UPDATED: Refined proximity query to resolve Glitch #2 (Persistent Red Blink).
  */
 @Dao
 public interface ManualLocationDao {
@@ -39,12 +40,13 @@ public interface ManualLocationDao {
 
     /**
      * Logic #3: The Smart Search query.
-     * Finds the closest workplace based on a coordinate delta.
-     * This searches for any workplace within roughly 300 meters of the current GPS.
+     * FIXED GLITCH #2: Improved delta matching and added distance ordering.
+     * This searches for workplaces within a broader delta and selects the closest match.
      */
     @Query("SELECT * FROM manual_locations " +
-           "WHERE (latitude BETWEEN :lat - 0.003 AND :lat + 0.003) " +
-           "AND (longitude BETWEEN :lon - 0.003 AND :lon + 0.003) " +
+           "WHERE (latitude BETWEEN :lat - 0.005 AND :lat + 0.005) " +
+           "AND (longitude BETWEEN :lon - 0.005 AND :lon + 0.005) " +
+           "ORDER BY ABS(latitude - :lat) + ABS(longitude - :lon) ASC " +
            "LIMIT 1")
     ManualLocation findClosestLocation(double lat, double lon);
 
