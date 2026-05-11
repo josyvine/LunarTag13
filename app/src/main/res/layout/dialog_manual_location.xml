@@ -16,7 +16,22 @@
             android:layout_height="?attr/actionBarSize"
             app:navigationIcon="@android:drawable/ic_menu_close_clear_cancel"
             app:title="Smart Workplace Manager"
-            app:titleTextColor="@android:color/white" />
+            app:titleTextColor="@android:color/white">
+
+            <!-- NEW: Delete Button to resolve Build Error (Glitch #1 Fix) -->
+            <ImageButton
+                android:id="@+id/btn_delete_workplaces"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginEnd="16dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_delete"
+                android:visibility="gone"
+                app:tint="@android:color/white"
+                tools:visibility="visible" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
 
     </com.google.android.material.appbar.AppBarLayout>
 
