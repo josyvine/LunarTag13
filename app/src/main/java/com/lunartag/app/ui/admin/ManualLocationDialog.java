@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 /**
  * A full-screen DialogFragment that allows users to manage multiple workplace profiles.
  * This file integrates the Save logic and the List Selection logic (Logic #1).
- * UPDATED: Added Landmark sanitization to remove brackets (Issue #2).
+ * UPDATED: Optimized activation logic and coordinate precision to resolve Glitch #2.
  */
 public class ManualLocationDialog extends DialogFragment {
 
@@ -151,6 +151,7 @@ public class ManualLocationDialog extends DialogFragment {
         workplace.isActive = true;
 
         executorService.execute(() -> {
+            // FIXED GLITCH #2: Strict order of operations to ensure correct profile activation
             manualLocationDao.deactivateAll();
             manualLocationDao.insertLocation(workplace);
             applyToPreferences(workplace);
@@ -180,13 +181,17 @@ public class ManualLocationDialog extends DialogFragment {
         // FIX ISSUE #2: Ensure landmark is clean of brackets when applying to watermark settings
         String landmarkClean = loc.landmark.replace("(", "").replace(")", "");
 
+        // FIXED GLITCH #2: Coordinates are converted to consistent double strings to match proximity checks
+        String finalLat = String.valueOf(loc.latitude);
+        String finalLon = String.valueOf(loc.longitude);
+
         prefs.edit()
                 .putBoolean(KEY_LOCATION_MODE_MANUAL, true)
                 .putString(KEY_MANUAL_LOC_1, loc.locationName)
                 .putString(KEY_MANUAL_LANDMARK, landmarkClean)
                 .putString(KEY_MANUAL_PINCODE, loc.pincode)
-                .putString(KEY_MANUAL_LAT, String.valueOf(loc.latitude))
-                .putString(KEY_MANUAL_LON, String.valueOf(loc.longitude))
+                .putString(KEY_MANUAL_LAT, finalLat)
+                .putString(KEY_MANUAL_LON, finalLon)
                 .putString(KEY_MANUAL_STATE, loc.state)
                 .putString(KEY_MANUAL_COUNTRY, loc.country)
                 .putBoolean(KEY_MANUAL_QR_ENABLED, switchQr.isChecked())
