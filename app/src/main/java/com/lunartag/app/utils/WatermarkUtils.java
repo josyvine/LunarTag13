@@ -25,6 +25,7 @@ import java.util.Hashtable;
  * FIXED: Balanced QR size and vertical alignment to match the "working" rendering.
  * FIXED: Resolved truncation by calculating block height from branding stack height.
  * FIXED: Decoupled QR scaling and implemented dynamic font reduction for long addresses.
+ * FIXED: Upgraded signature to return Bitmap, ensuring automatic mutability handling.
  */
 public class WatermarkUtils {
 
@@ -34,19 +35,26 @@ public class WatermarkUtils {
     /**
      * Renders the complete watermark block onto the provided Bitmap.
      * @param context The Android Context (needed to load the logo resource).
-     * @param originalBitmap The original, mutable photo bitmap.
+     * @param originalBitmap The original photo bitmap.
      * @param mapBitmap The small, pre-rendered bitmap of the map preview.
      * @param lines An array of strings, with each string representing one line of the watermark text.
      * @param lat Raw latitude string for QR link.
      * @param lon Raw longitude string for QR link.
      * @param showQr Boolean toggle to enable/disable QR printing.
+     * @return The watermarked mutable Bitmap.
      */
-    public static void addWatermark(Context context, Bitmap originalBitmap, Bitmap mapBitmap, String[] lines, String lat, String lon, boolean showQr) {
+    public static Bitmap addWatermark(Context context, Bitmap originalBitmap, Bitmap mapBitmap, String[] lines, String lat, String lon, boolean showQr) {
         if (originalBitmap == null || lines == null || lines.length == 0) {
-            return;
+            return originalBitmap;
         }
 
-        Canvas canvas = new Canvas(originalBitmap);
+        // Defensive check: If the passed bitmap is immutable, create a mutable working copy
+        Bitmap workingBitmap = originalBitmap;
+        if (!workingBitmap.isMutable()) {
+            workingBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        }
+
+        Canvas canvas = new Canvas(workingBitmap);
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
@@ -176,6 +184,8 @@ public class WatermarkUtils {
                 currentY += (textHeight + lineSpacing); 
             }
         }
+
+        return workingBitmap;
     }
 
     /**
