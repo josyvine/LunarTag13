@@ -9,6 +9,7 @@ import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -40,6 +41,7 @@ import com.google.android.play.core.install.model.UpdateAvailability;
 import com.google.android.gms.tasks.Task;
 import com.lunartag.app.databinding.ActivityMainBinding;
 import com.lunartag.app.firebase.RemoteConfigManager;
+import com.lunartag.app.services.SendService;
 import com.lunartag.app.ui.logs.LogFragment;
 
 import java.util.ArrayList;
@@ -50,6 +52,7 @@ import java.util.Map;
  * The main screen of the application.
  * UPDATED: Handles centralized logging, blinking notification icon, AdMob Banner, 
  * Google Play In-App Updates, and Notification Permissions for 9 horizontal menu items.
+ * FIXED: Captures direct share click intents to automatically dismount SendService and dispatch WhatsApp.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -230,6 +233,49 @@ public class MainActivity extends AppCompatActivity {
                 });
 
         checkAndRequestPermissions();
+
+        // FIXED: Handle standard notification dispatch click on clean cold startup
+        handleShareNotificationClick(getIntent());
+    }
+
+    /**
+     * FIXED: Captures intent updates when the Activity is running and brought back to front.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent); // Update internal intent state
+        handleShareNotificationClick(intent);
+    }
+
+    /**
+     * FIXED: Intercepts custom share intents to dismount the persistent service and redirect to WhatsApp.
+     */
+    private void handleShareNotificationClick(Intent intent) {
+        if (intent != null && SendService.ACTION_SHARE_IMAGE.equals(intent.getAction())) {
+            String uriString = intent.getStringExtra(SendService.EXTRA_SHARE_IMAGE_URI);
+            if (uriString != null) {
+                try {
+                    Uri imageUri = Uri.parse(uriString);
+
+                    // 1. Immediately terminate SendService to dismount the persistent notification
+                    Intent stopServiceIntent = new Intent(this, SendService.class);
+                    stopService(stopServiceIntent);
+
+                    // 2. Dispatch Direct WhatsApp Share Activity
+                    Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                    shareIntent.setType("image/*");
+                    shareIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
+                    shareIntent.setPackage("com.whatsapp"); 
+                    shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(shareIntent);
+
+                } catch (Exception e) {
+                    Log.e("MainActivity", "Error handling share notification dismount: " + e.getMessage());
+                }
+            }
+        }
     }
 
     @Override
