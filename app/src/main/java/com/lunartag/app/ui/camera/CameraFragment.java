@@ -536,7 +536,8 @@ public class CameraFragment extends Fragment {
                 logToScreen("System: Applying Watermark...");
 
                 // --- UPDATED: Passing data to improved Watermark Utility with fixed QR scaling ---
-                WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines, qrLat, qrLon, isQrEnabled);
+                // FIXED: Assigned result to the bitmap reference to support the defensive clone fallback.
+                bitmap = WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines, qrLat, qrLon, isQrEnabled);
 
                 // --- STORAGE LOGIC ---
                 String absolutePath = null;
