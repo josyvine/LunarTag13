@@ -20,6 +20,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
 
+import com.lunartag.app.MainActivity;
 import com.lunartag.app.R;
 
 import java.io.File;
@@ -31,6 +32,8 @@ public class SendService extends Service {
     private static final int NOTIFICATION_ID = 101;
 
     public static final String EXTRA_FILE_PATH = "com.lunartag.app.EXTRA_FILE_PATH";
+    public static final String ACTION_SHARE_IMAGE = "com.lunartag.app.ACTION_SHARE_IMAGE";
+    public static final String EXTRA_SHARE_IMAGE_URI = "share_image_uri";
 
     // Settings Prefs
     private static final String PREFS_SETTINGS = "LunarTagSettings";
@@ -43,6 +46,9 @@ public class SendService extends Service {
     // TOKEN SYSTEM KEYS
     private static final String KEY_JOB_PENDING = "job_is_pending"; // The Permission Ticket
     private static final String KEY_FORCE_RESET = "force_reset_logic"; // The Brain Wipe
+
+    private final Handler safetyHandler = new Handler(Looper.getMainLooper());
+    private Runnable safetyTimeoutRunnable;
 
     @Override
     public void onCreate() {
@@ -98,6 +104,11 @@ public class SendService extends Service {
         // --- STEP 2: Post Notification ---
         postNotification(imageUri);
 
+        // --- STEP 3: Setup Safety Timeout ---
+        // If the notification is completely unattended (or sent by robot),
+        // self-destruct after 60 seconds to prevent lingering in the drawer.
+        setupSafetyTimeout();
+
         return START_NOT_STICKY;
     }
 
@@ -112,17 +123,17 @@ public class SendService extends Service {
 
     private void postNotification(Uri imageUri) {
         try {
-            Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType("image/*");
-            shareIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
-            shareIntent.setPackage("com.whatsapp"); 
-            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            // FIXED: Point PendingIntent to MainActivity instead of raw WhatsApp share action.
+            // This grants background activity launch clearance and stops SendService first.
+            Intent clickIntent = new Intent(this, MainActivity.class);
+            clickIntent.setAction(ACTION_SHARE_IMAGE);
+            clickIntent.putExtra(EXTRA_SHARE_IMAGE_URI, imageUri.toString());
+            clickIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
             PendingIntent pendingIntent = PendingIntent.getActivity(
                     this,
                     0,
-                    shareIntent,
+                    clickIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
 
@@ -163,6 +174,22 @@ public class SendService extends Service {
         }
     }
 
+    private void setupSafetyTimeout() {
+        if (safetyTimeoutRunnable != null) {
+            safetyHandler.removeCallbacks(safetyTimeoutRunnable);
+        }
+        safetyTimeoutRunnable = () -> {
+            try {
+                Log.d(TAG, "Unattended send timeout. Stopping foreground service.");
+                stopForeground(true);
+                stopSelf();
+            } catch (Exception e) {
+                // Already terminated
+            }
+        };
+        safetyHandler.postDelayed(safetyTimeoutRunnable, 60000); // 60-second dismount
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel(
@@ -178,6 +205,14 @@ public class SendService extends Service {
                 manager.createNotificationChannel(serviceChannel);
             }
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (safetyTimeoutRunnable != null) {
+            safetyHandler.removeCallbacks(safetyTimeoutRunnable);
+        }
+        super.onDestroy();
     }
 
     @Nullable
