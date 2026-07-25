@@ -20,6 +20,7 @@ import java.util.Locale;
  * Utility class to handle robust geocoding with retry logic and OSM fallback.
  * UPDATED: Unified address quality and removed brackets from all outputs (Glitch #3 / Issue #2).
  * FIXED: Strictly filters out Plus Codes and "Unnamed" segments to resolve "pathetic" manual geotags (Glitch #2).
+ * UPDATED: Added Geocoder.isPresent() check for instant OSM fallback on GMS-less Huawei devices.
  */
 public class GeocodingUtils {
 
@@ -41,7 +42,7 @@ public class GeocodingUtils {
 
     /**
      * Attempts to get an address using Native Geocoder (with retries) 
-     * and falls back to OpenStreetMap if native fails.
+     * and falls back to OpenStreetMap if native fails or is not available.
      * Used by Automatic mode and synchronized with Manual mode.
      */
     public static String getAddressWithFallback(Context context, Location location) {
@@ -50,45 +51,49 @@ public class GeocodingUtils {
         double lat = location.getLatitude();
         double lon = location.getLongitude();
 
-        // --- ATTEMPT 1: NATIVE ANDROID GEOCODER WITH RETRY LOOP ---
-        Geocoder geocoder = new Geocoder(context, Locale.getDefault());
-        int maxRetries = 3;
+        // --- ATTEMPT 1: NATIVE ANDROID GEOCODER WITH RETRY LOOP (IF PRESENT) ---
+        if (Geocoder.isPresent()) {
+            Geocoder geocoder = new Geocoder(context, Locale.getDefault());
+            int maxRetries = 3;
 
-        for (int i = 1; i <= maxRetries; i++) {
-            try {
-                List<Address> addresses = geocoder.getFromLocation(lat, lon, 1);
-                if (addresses != null && !addresses.isEmpty()) {
-                    Address addr = addresses.get(0);
-                    String addressLine = addr.getAddressLine(0);
-                    
-                    // FIXED GLITCH #2: Check if line 0 is a Plus Code or Unnamed
-                    if (addressLine != null && (addressLine.contains("+") || addressLine.toLowerCase().contains("unnamed"))) {
-                        // Attempt to find a better line in the same address object
-                        int maxLines = addr.getMaxAddressLineIndex();
-                        for (int j = 1; j <= maxLines; j++) {
-                            String altLine = addr.getAddressLine(j);
-                            if (altLine != null && !altLine.contains("+") && !altLine.toLowerCase().contains("unnamed")) {
-                                addressLine = altLine;
-                                break;
+            for (int i = 1; i <= maxRetries; i++) {
+                try {
+                    List<Address> addresses = geocoder.getFromLocation(lat, lon, 1);
+                    if (addresses != null && !addresses.isEmpty()) {
+                        Address addr = addresses.get(0);
+                        String addressLine = addr.getAddressLine(0);
+                        
+                        // FIXED GLITCH #2: Check if line 0 is a Plus Code or Unnamed
+                        if (addressLine != null && (addressLine.contains("+") || addressLine.toLowerCase().contains("unnamed"))) {
+                            // Attempt to find a better line in the same address object
+                            int maxLines = addr.getMaxAddressLineIndex();
+                            for (int j = 1; j <= maxLines; j++) {
+                                String altLine = addr.getAddressLine(j);
+                                if (altLine != null && !altLine.contains("+") && !altLine.toLowerCase().contains("unnamed")) {
+                                    addressLine = altLine;
+                                    break;
+                                }
                             }
                         }
-                    }
 
-                    if (addressLine != null && !addressLine.isEmpty()) {
-                        broadcastLog(context, "System: Native Geocoder Success on attempt " + i, "info");
-                        // FIX ISSUE #2: Remove brackets
-                        return addressLine.replace("(", "").replace(")", "");
+                        if (addressLine != null && !addressLine.isEmpty()) {
+                            broadcastLog(context, "System: Native Geocoder Success on attempt " + i, "info");
+                            // FIX ISSUE #2: Remove brackets
+                            return addressLine.replace("(", "").replace(")", "");
+                        }
                     }
+                } catch (Exception e) {
+                    broadcastLog(context, "Warning: Native Geocoder Attempt " + i + " failed (" + e.getMessage() + ")", "error");
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
                 }
-            } catch (Exception e) {
-                broadcastLog(context, "Warning: Native Geocoder Attempt " + i + " failed (" + e.getMessage() + ")", "error");
-                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
             }
+
+            broadcastLog(context, "System: Native Geocoder Exhausted. Switching to OSM Fallback...", "error");
+        } else {
+            broadcastLog(context, "System: Native Geocoder not present on device (Huawei Mode). Using OSM...", "info");
         }
 
         // --- ATTEMPT 2: OPENSTREETMAP (NOMINATIM) FALLBACK ---
-        broadcastLog(context, "System: Native Geocoder Exhausted. Switching to OSM Fallback...", "error");
-        
         try {
             String urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=18&addressdetails=1";
             URL url = new URL(urlString);
@@ -137,49 +142,51 @@ public class GeocodingUtils {
         details.latitude = location.getLatitude();
         details.longitude = location.getLongitude();
 
-        Geocoder geocoder = new Geocoder(context, Locale.getDefault());
-        try {
-            List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
-            if (addresses != null && !addresses.isEmpty()) {
-                Address addr = addresses.get(0);
-                
-                // FIXED GLITCH #3 & #2: Use high-quality fallback logic for the main address line
-                String bestAddress = addr.getAddressLine(0);
-                if (bestAddress != null && (bestAddress.contains("+") || bestAddress.toLowerCase().contains("unnamed"))) {
-                    for (int j = 1; j <= addr.getMaxAddressLineIndex(); j++) {
-                        String alt = addr.getAddressLine(j);
-                        if (alt != null && !alt.contains("+") && !alt.toLowerCase().contains("unnamed")) {
-                            bestAddress = alt;
-                            break;
+        if (Geocoder.isPresent()) {
+            Geocoder geocoder = new Geocoder(context, Locale.getDefault());
+            try {
+                List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
+                if (addresses != null && !addresses.isEmpty()) {
+                    Address addr = addresses.get(0);
+                    
+                    // FIXED GLITCH #3 & #2: Use high-quality fallback logic for the main address line
+                    String bestAddress = addr.getAddressLine(0);
+                    if (bestAddress != null && (bestAddress.contains("+") || bestAddress.toLowerCase().contains("unnamed"))) {
+                        for (int j = 1; j <= addr.getMaxAddressLineIndex(); j++) {
+                            String alt = addr.getAddressLine(j);
+                            if (alt != null && !alt.contains("+") && !alt.toLowerCase().contains("unnamed")) {
+                                bestAddress = alt;
+                                break;
+                            }
                         }
                     }
-                }
-                details.fullAddress = (bestAddress != null ? bestAddress : "").replace("(", "").replace(")", "");
-                
-                // FIXED ISSUE #2: Strip brackets from all components
-                details.pincode = (addr.getPostalCode() != null ? addr.getPostalCode() : "").replace("(", "").replace(")", "");
-                details.state = (addr.getAdminArea() != null ? addr.getAdminArea() : "").replace("(", "").replace(")", "");
-                details.country = (addr.getCountryName() != null ? addr.getCountryName() : "").replace("(", "").replace(")", "");
-                details.city = (addr.getLocality() != null ? addr.getLocality() : "").replace("(", "").replace(")", "");
+                    details.fullAddress = (bestAddress != null ? bestAddress : "").replace("(", "").replace(")", "");
+                    
+                    // FIXED ISSUE #2: Strip brackets from all components
+                    details.pincode = (addr.getPostalCode() != null ? addr.getPostalCode() : "").replace("(", "").replace(")", "");
+                    details.state = (addr.getAdminArea() != null ? addr.getAdminArea() : "").replace("(", "").replace(")", "");
+                    details.country = (addr.getCountryName() != null ? addr.getCountryName() : "").replace("(", "").replace(")", "");
+                    details.city = (addr.getLocality() != null ? addr.getLocality() : "").replace("(", "").replace(")", "");
 
-                // Logic #3: Refined Landmark extraction
-                StringBuilder landmarkBuilder = new StringBuilder();
-                if (addr.getFeatureName() != null && !addr.getFeatureName().contains("+")) {
-                    landmarkBuilder.append(addr.getFeatureName());
+                    // Logic #3: Refined Landmark extraction
+                    StringBuilder landmarkBuilder = new StringBuilder();
+                    if (addr.getFeatureName() != null && !addr.getFeatureName().contains("+")) {
+                        landmarkBuilder.append(addr.getFeatureName());
+                    }
+                    if (addr.getSubLocality() != null && !addr.getSubLocality().equals(addr.getFeatureName())) {
+                        if (landmarkBuilder.length() > 0) landmarkBuilder.append(", ");
+                        landmarkBuilder.append(addr.getSubLocality());
+                    }
+                    details.landmark = landmarkBuilder.toString().replace("(", "").replace(")", "");
+                    
+                    return details;
                 }
-                if (addr.getSubLocality() != null && !addr.getSubLocality().equals(addr.getFeatureName())) {
-                    if (landmarkBuilder.length() > 0) landmarkBuilder.append(", ");
-                    landmarkBuilder.append(addr.getSubLocality());
-                }
-                details.landmark = landmarkBuilder.toString().replace("(", "").replace(")", "");
-                
-                return details;
+            } catch (Exception e) {
+                Log.e(TAG, "Native Detailed Geocode failed, trying OSM fallback...");
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Native Detailed Geocode failed, trying OSM fallback...");
         }
 
-        // Fallback to OSM for detailed JSON parsing if Native fails
+        // Fallback to OSM for detailed JSON parsing if Native fails or isn't present
         try {
             String urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + 
                                location.getLatitude() + "&lon=" + location.getLongitude() + "&zoom=18&addressdetails=1";
