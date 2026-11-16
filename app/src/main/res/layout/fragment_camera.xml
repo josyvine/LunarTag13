@@ -92,7 +92,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- Bottom controls bar -->
+    <!-- Bottom controls bar (5 clean icons: Save, Import, Capture, GPS, Flip) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_controls_bar"
         android:layout_width="match_parent"
@@ -103,25 +103,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Gallery Thumbnail (Left Edge) -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/card_gallery_thumbnail"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            app:cardCornerRadius="8dp"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent">
-
-            <ImageView
-                android:id="@+id/image_gallery_thumbnail"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                android:background="@android:color/darker_gray"/>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- FOLDER BUTTON (Updated to use save_24px) -->
+        <!-- FOLDER BUTTON (Anchored to left edge, mirroring Flip button on right) -->
         <ImageButton
             android:id="@+id/button_save_folder"
             android:layout_width="50dp"
@@ -131,12 +113,26 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Select Save Folder"
             app:tint="@android:color/white"
-            app:layout_constraintStart_toEndOf="@id/card_gallery_thumbnail"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
+
+        <!-- IMPORT IMAGE BUTTON (Centered between Save Folder and Capture) -->
+        <ImageButton
+            android:id="@+id/button_import_image"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:src="@drawable/upload_file_24px"
+            android:scaleType="fitCenter"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Import Image"
+            app:tint="@android:color/white"
+            app:layout_constraintStart_toEndOf="@id/button_save_folder"
             app:layout_constraintEnd_toStartOf="@id/button_capture"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- Shutter Button (Updated to use capture_24px) -->
+        <!-- Shutter Button (Centered) -->
         <ImageButton
             android:id="@+id/button_capture"
             android:layout_width="80dp"
@@ -150,8 +146,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- GPS STATUS BUTTON (Updated to use my_location_24px) -->
-        <!-- Prepared for Logic #2: Blinks red if workplace mismatch is detected -->
+        <!-- GPS STATUS BUTTON (Centered between Capture and Flip Camera) -->
         <ImageButton
             android:id="@+id/button_gps_status"
             android:layout_width="50dp"
@@ -166,7 +161,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- Flip Camera Button (Updated to use flip_camera_android_24px) -->
+        <!-- Flip Camera Button (Anchored to right edge) -->
         <ImageButton
             android:id="@+id/button_flip_camera"
             android:layout_width="50dp"
@@ -180,7 +175,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <!-- Slot Counter (Positioned above Flip Button) -->
+        <!-- Slot Counter (Right-aligned above Flip Button so text never clips) -->
         <TextView
             android:id="@+id/text_slot_counter"
             android:layout_width="wrap_content"
@@ -191,8 +186,7 @@
             android:visibility="gone"
             android:layout_marginBottom="8dp"
             app:layout_constraintBottom_toTopOf="@id/button_flip_camera"
-            app:layout_constraintEnd_toEndOf="@id/button_flip_camera"
-            app:layout_constraintStart_toStartOf="@id/button_flip_camera"
+            app:layout_constraintEnd_toEndOf="parent"
             tools:text="5 Slots"
             tools:visibility="visible"/>
 
