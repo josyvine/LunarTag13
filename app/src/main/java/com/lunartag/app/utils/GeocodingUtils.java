@@ -21,6 +21,7 @@ import java.util.Locale;
  * UPDATED: Unified address quality and removed brackets from all outputs (Glitch #3 / Issue #2).
  * FIXED: Strictly filters out Plus Codes and "Unnamed" segments to resolve "pathetic" manual geotags (Glitch #2).
  * UPDATED: Added Geocoder.isPresent() check for instant OSM fallback on GMS-less Huawei devices.
+ * LEVEL 2: OSM Nominatim Base URL resolved via NativeBridge from native C++ (.so).
  */
 public class GeocodingUtils {
 
@@ -95,7 +96,8 @@ public class GeocodingUtils {
 
         // --- ATTEMPT 2: OPENSTREETMAP (NOMINATIM) FALLBACK ---
         try {
-            String urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&zoom=18&addressdetails=1";
+            String baseUrl = NativeBridge.getNominatimBaseUrl();
+            String urlString = baseUrl + "?format=json&lat=" + lat + "&lon=" + lon + "&zoom=18&addressdetails=1";
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -188,7 +190,8 @@ public class GeocodingUtils {
 
         // Fallback to OSM for detailed JSON parsing if Native fails or isn't present
         try {
-            String urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + 
+            String baseUrl = NativeBridge.getNominatimBaseUrl();
+            String urlString = baseUrl + "?format=json&lat=" + 
                                location.getLatitude() + "&lon=" + location.getLongitude() + "&zoom=18&addressdetails=1";
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
