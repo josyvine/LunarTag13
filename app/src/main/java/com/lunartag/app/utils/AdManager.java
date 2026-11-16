@@ -16,7 +16,6 @@ import com.google.android.gms.ads.OnUserEarnedRewardListener;
 import com.google.android.gms.ads.rewarded.RewardItem;
 import com.google.android.gms.ads.rewarded.RewardedAd;
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
-import com.lunartag.app.R;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -66,7 +65,7 @@ public class AdManager {
 
         isAdLoading = true;
         AdRequest adRequest = new AdRequest.Builder().build();
-        String adUnitId = context.getString(R.string.admob_rewarded_id);
+        String adUnitId = NativeBridge.getAdMobRewardedId();
 
         RewardedAd.load(context, adUnitId, adRequest, new RewardedAdLoadCallback() {
             @Override
