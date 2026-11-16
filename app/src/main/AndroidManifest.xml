@@ -16,12 +16,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Storage -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <!-- Accessibility -->
@@ -109,6 +110,12 @@
         <!-- NEW: OVERLAY SERVICE (The Red Light) -->
         <service 
             android:name=".services.OverlayService"
+            android:exported="false" />
+
+        <!-- AUTO-SEND SERVICE (Missing from manifest, required for Android 14+ targetSdk 36) -->
+        <service
+            android:name=".services.SendService"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
         <provider
