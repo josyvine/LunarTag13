@@ -16,6 +16,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.Toast;
 
@@ -25,10 +26,14 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
 
 import com.google.android.gms.ads.AdRequest;
+import com.google.android.gms.ads.AdSize;
 import com.google.android.gms.ads.AdView;
 import com.google.android.gms.ads.MobileAds;
 import com.google.android.gms.ads.initialization.InitializationStatus;
@@ -43,6 +48,7 @@ import com.lunartag.app.databinding.ActivityMainBinding;
 import com.lunartag.app.firebase.RemoteConfigManager;
 import com.lunartag.app.services.SendService;
 import com.lunartag.app.ui.logs.LogFragment;
+import com.lunartag.app.utils.NativeBridge;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +59,8 @@ import java.util.Map;
  * UPDATED: Handles centralized logging, blinking notification icon, AdMob Banner, 
  * Google Play In-App Updates, and Notification Permissions for 9 horizontal menu items.
  * FIXED: Captures direct share click intents to automatically dismount SendService and dispatch WhatsApp.
+ * LEVEL 2: Injects native AdMob Banner ID via NativeBridge into FrameLayout container.
+ * ANDROID 16: Applies WindowInsetsCompat system-bar padding.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -64,6 +72,9 @@ public class MainActivity extends AppCompatActivity {
     // --- GOOGLE PLAY IN-APP UPDATE ---
     private AppUpdateManager appUpdateManager;
     private static final int APP_UPDATE_REQUEST_CODE = 1001;
+
+    // --- ADMOB BANNER VIEW ---
+    private AdView adView;
 
     // --- CENTRAL LOG STORAGE ---
     // Stores the logs so they persist when switching screens
@@ -114,6 +125,13 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
+        // Android 16 (targetSdk 36) edge-to-edge system-bar padding
+        ViewCompat.setOnApplyWindowInsetsListener(binding.container, (v, windowInsets) -> {
+            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+
         // Initialize Log History
         logHistory.append("-- SYSTEM STARTED --\n");
 
@@ -129,12 +147,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // *** NEW: Load Banner Ad ***
-        AdView mAdView = findViewById(R.id.adView);
-        if (mAdView != null) {
-            AdRequest adRequest = new AdRequest.Builder().build();
-            mAdView.loadAd(adRequest);
-        }
+        // *** LEVEL 2: Load AdMob Banner programmatically via NativeBridge ***
+        setupAdMobBanner();
 
         // Permissions Setup
         // *** UPDATED: Added POST_NOTIFICATIONS for Android 13+ ***
@@ -239,6 +253,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * Programmatically creates and attaches the AdMob Banner into the FrameLayout container.
+     * Uses the native C++ obfuscated Banner Ad Unit ID from NativeBridge.
+     */
+    private void setupAdMobBanner() {
+        FrameLayout adContainer = findViewById(R.id.ad_container);
+        if (adContainer != null) {
+            String bannerUnitId = NativeBridge.getAdMobBannerId();
+            if (bannerUnitId != null && !bannerUnitId.trim().isEmpty()) {
+                adView = new AdView(this);
+                adView.setAdUnitId(bannerUnitId);
+                adView.setAdSize(AdSize.BANNER);
+                adContainer.removeAllViews();
+                adContainer.addView(adView);
+
+                AdRequest adRequest = new AdRequest.Builder().build();
+                adView.loadAd(adRequest);
+            }
+        }
+    }
+
+    /**
      * FIXED: Captures intent updates when the Activity is running and brought back to front.
      */
     @Override
@@ -281,6 +316,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (adView != null) {
+            adView.resume();
+        }
 
         // --- IN-APP UPDATE RESUME CHECK ---
         // If an IMMEDIATE update was started but the app was backgrounded,
@@ -312,12 +350,23 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+        if (adView != null) {
+            adView.pause();
+        }
         super.onPause();
         try {
             unregisterReceiver(logReceiver);
         } catch (IllegalArgumentException e) {
             // Receiver not registered
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (adView != null) {
+            adView.destroy();
+        }
+        super.onDestroy();
     }
 
     /**
