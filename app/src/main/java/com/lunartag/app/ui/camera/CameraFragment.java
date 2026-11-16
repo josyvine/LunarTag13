@@ -15,7 +15,9 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.ImageDecoder;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -32,6 +34,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.camera.core.Camera;
@@ -106,6 +110,20 @@ public class CameraFragment extends Fragment {
     private ManualLocationDao manualLocationDao;
     private ObjectAnimator gpsBlinkAnimator;
     private boolean isBlinking = false;
+
+    // NEW: Gallery/File Image Import Launcher
+    private ActivityResultLauncher<String> pickImageLauncher;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // Register the Photo/Document Picker contract
+        pickImageLauncher = registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
+            if (uri != null) {
+                handleImportedImageUri(uri);
+            }
+        });
+    }
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -192,6 +210,12 @@ public class CameraFragment extends Fragment {
         binding.buttonSaveFolder.setOnClickListener(v -> {
             logToScreen("User Command: Opening File Picker...");
             StorageUtils.launchFolderSelector(this);
+        });
+
+        // 7. NEW: Import Image from Gallery/Files Logic (Footer)
+        binding.buttonImportImage.setOnClickListener(v -> {
+            logToScreen("User Command: Opening Image Picker for Import...");
+            pickImageLauncher.launch("image/*");
         });
 
         updateWorkplaceDisplay();
@@ -428,6 +452,52 @@ public class CameraFragment extends Fragment {
         });
     }
 
+    // --- NEW: HANDLE IMPORTED IMAGE FROM GALLERY/FILES ---
+    private void handleImportedImageUri(Uri imageUri) {
+        Toast.makeText(getContext(), "Importing image...", Toast.LENGTH_SHORT).show();
+        logToScreen("System: Decoding imported image URI: " + imageUri);
+
+        cameraExecutor.execute(() -> {
+            try {
+                Bitmap bitmap = null;
+                ContentResolver resolver = requireContext().getContentResolver();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ImageDecoder.Source source = ImageDecoder.createSource(resolver, imageUri);
+                    bitmap = ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
+                        decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                        decoder.setMutableRequired(true);
+                    });
+                } else {
+                    try (InputStream is = resolver.openInputStream(imageUri)) {
+                        if (is != null) {
+                            Bitmap decoded = BitmapFactory.decodeStream(is);
+                            if (decoded != null) {
+                                bitmap = decoded.copy(Bitmap.Config.ARGB_8888, true);
+                                decoded.recycle();
+                            }
+                        }
+                    }
+                }
+
+                if (bitmap == null) {
+                    logToScreen("ERROR: Failed to decode imported image.");
+                    new android.os.Handler(Looper.getMainLooper()).post(() ->
+                            Toast.makeText(getContext(), "Failed to load image.", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+
+                logToScreen("System: Imported Image Decoded SUCCESS (" + bitmap.getWidth() + "x" + bitmap.getHeight() + ")");
+                processBitmapAndSave(bitmap, true);
+
+            } catch (Exception e) {
+                logToScreen("ERROR Decoding Imported Image: " + e.getMessage());
+                e.printStackTrace();
+                new android.os.Handler(Looper.getMainLooper()).post(() ->
+                        Toast.makeText(getContext(), "Import error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
     private void processAndSaveImage(ImageProxy imageProxy) {
         try {
             logToScreen("System: Converting YUV to Bitmap...");
@@ -439,6 +509,16 @@ public class CameraFragment extends Fragment {
                 return;
             }
 
+            processBitmapAndSave(bitmap, false);
+
+        } catch (Exception e) {
+            logToScreen("CRITICAL ERROR Top Level: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void processBitmapAndSave(Bitmap bitmap, boolean isImported) {
+        try {
             // --- NEW: LOGIC TO DETECT LOCATION MODE ---
             logToScreen("System: Checking Location mode...");
             SharedPreferences settingsPrefs = requireContext().getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
@@ -540,22 +620,23 @@ public class CameraFragment extends Fragment {
                 bitmap = WatermarkUtils.addWatermark(getContext(), bitmap, null, watermarkLines, qrLat, qrLon, isQrEnabled);
 
                 // --- STORAGE LOGIC ---
+                String filePrefix = isImported ? "LunarTag_Import_" : "LunarTag_";
                 String absolutePath = null;
                 logToScreen("System: Saving File...");
 
                 // 1. Check if user selected a custom folder
                 if (StorageUtils.hasCustomFolder(getContext())) {
                     logToScreen("Storage: Using User-Selected Folder (SD/External).");
-                    absolutePath = StorageUtils.saveImageToCustomFolder(getContext(), bitmap, "LunarTag_" + realTime);
+                    absolutePath = StorageUtils.saveImageToCustomFolder(getContext(), bitmap, filePrefix + realTime);
                 } 
                 // 2. Fallback to Default Internal
                 else {
                     logToScreen("Storage: Using Default Internal Storage.");
-                    absolutePath = saveImageToInternalStorage(getContext(), bitmap, "LunarTag_" + realTime);
+                    absolutePath = saveImageToInternalStorage(getContext(), bitmap, filePrefix + realTime);
                     // If Internal, we also export to Gallery for visibility
                     if (absolutePath != null) {
                         logToScreen("Storage: Exporting copy to Public Gallery...");
-                        exportToPublicGallery(getContext(), absolutePath, "LunarTag_" + realTime);
+                        exportToPublicGallery(getContext(), absolutePath, filePrefix + realTime);
                     }
                 }
 
@@ -576,8 +657,9 @@ public class CameraFragment extends Fragment {
                     // --- ENHANCEMENT: COPY TO CLIPBOARD ---
                     copyImageToClipboard(absolutePath);
 
+                    final String toastMsg = isImported ? "Photo Processed and Saved!" : "Photo Saved!";
                     new android.os.Handler(Looper.getMainLooper()).post(() -> {
-                        Toast.makeText(getContext(), "Photo Saved!", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(), toastMsg, Toast.LENGTH_SHORT).show();
                         updateSlotCounter();
                     });
                 } else {
