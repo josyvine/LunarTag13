@@ -1,3 +1,108 @@
+# ===================================================================
+# 1. Anti-Debugging, Package Flattening & Metadata Stripping (Level 1)
+# ===================================================================
+
+# Strip standard Android Log calls from release bytecode
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+    public static *** w(...);
+    public static *** e(...);
+    public static *** println(...);
+}
+
+# Flatten obfuscated classes into a single short package and allow access optimization
+-repackageclasses 'o'
+-allowaccessmodification
+
+# Replace original .java file names with 'SourceFile' in decompilers
+-renamesourcefileattribute 'SourceFile'
+
+# Strip local variable names and parameter names so decompilers only see p0, p1, v0
+-keepattributes SourceFile,LineNumberTable,!LocalVariableTable,!LocalVariableTypeTable,!MethodParameters
+
+# Preserve required annotations and generic signatures
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+
+# ===================================================================
+# 2. Android Entry Points, Services, Receivers & Navigation Fragments
+# ===================================================================
+
+-keep class com.lunartag.app.LunarTagApplication {
+    public <init>();
+}
+-keep class * extends android.app.Application
+-keep class * extends android.app.Activity
+-keep class * extends android.app.Service
+-keep class * extends android.content.BroadcastReceiver
+-keep class * extends android.content.ContentProvider
+
+# Preserve Fragment no-arg constructors for Navigation Component instantiation
+-keepclassmembers class * extends androidx.fragment.app.Fragment {
+    public <init>();
+}
+
+# ===================================================================
+# 3. Native C++ JNI Bridge (Level 2 NDK Protection)
+# ===================================================================
+
+-keep class com.lunartag.app.utils.NativeBridge {
+    *;
+}
+
+# ===================================================================
+# 4. Room Database & Data Models
+# ===================================================================
+
+-keep class androidx.room.** { *; }
+-dontwarn androidx.room.**
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao interface * { *; }
+-keepclassmembers class com.lunartag.app.model.** {
+    public <init>(...);
+    <fields>;
+}
+
+# ===================================================================
+# 5. Firebase, AdMob & Google Play In-App Updates
+# ===================================================================
+
+-keep class com.google.android.gms.ads.** { *; }
+-keep class com.google.ads.** { *; }
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.play.**
+
+# ===================================================================
+# 6. CameraX, Guava, Glide, OSMDroid, WorkManager & ZXing
+# ===================================================================
+
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn org.checkerframework.**
+
+-keep public class * implements com.bumptech.glide.module.GlideModule
+-keep class * extends com.bumptech.glide.module.AppGlideModule
+-dontwarn com.bumptech.glide.**
+
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**
+
+-keep class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-dontwarn androidx.work.**
+-dontwarn com.google.zxing.**
+
+# ===================================================================
+# 7. Existing PDFBox Rules (Preserved)
+# ===================================================================
+
 # These rules fix the crash when analyzing PDF files.
 
 # Rule 1: Prevents the PDF library's code from being altered or removed by the build process.
@@ -6,3 +111,4 @@
 # Rule 2: Prevents the PDF library's essential resource files (like glyphlist.txt) 
 # from being deleted by the build process. This is the direct fix for the crash.
 -keepresources com/tom_roush/pdfbox/resources/**
+-dontwarn com.tom_roush.pdfbox.**
