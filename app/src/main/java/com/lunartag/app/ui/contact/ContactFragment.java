@@ -16,6 +16,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.lunartag.app.R;
+import com.lunartag.app.utils.NativeBridge;
 
 import org.json.JSONObject;
 
@@ -31,9 +32,6 @@ public class ContactFragment extends Fragment {
     private Button btnSend;
     private ExecutorService executorService;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-
-    // YOUR API URL
-    private static final String FORMSPREE_URL = "https://formspree.io/f/xyzenlao";
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -77,7 +75,9 @@ public class ContactFragment extends Fragment {
             @Override
             public void run() {
                 try {
-                    URL url = new URL(FORMSPREE_URL);
+                    // Level 2: Load Formspree URL from Native C++ (.so) instead of plain-text Java constant
+                    String endpointUrl = NativeBridge.getContactEndpoint();
+                    URL url = new URL(endpointUrl);
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
                     conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
@@ -139,4 +139,4 @@ public class ContactFragment extends Fragment {
             executorService.shutdown();
         }
     }
-            }
+}
