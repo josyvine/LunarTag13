@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ServiceInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -147,7 +148,12 @@ public class SendService extends Service {
                     .setAutoCancel(true) 
                     .build();
 
-            startForeground(NOTIFICATION_ID, notification);
+            // Android 14+ (API 34+) & Android 16 targetSdk compliance: provide FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
             
             // Live Log: Success
             showLiveLog("Notification Posted! Tap it to send.");
