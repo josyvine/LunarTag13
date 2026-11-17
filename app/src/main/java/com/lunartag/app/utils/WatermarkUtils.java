@@ -26,6 +26,7 @@ import java.util.Hashtable;
  * FIXED: Resolved truncation by calculating block height from branding stack height.
  * FIXED: Decoupled QR scaling and implemented dynamic font reduction for long addresses.
  * FIXED: Upgraded signature to return Bitmap, ensuring automatic mutability handling.
+ * FIXED: Responsive QR size calculation based on image width to prevent giant or tiny QR codes across different camera/gallery resolutions.
  */
 public class WatermarkUtils {
 
@@ -83,9 +84,10 @@ public class WatermarkUtils {
         // Precise calculation of text block height
         float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
         
-        // Define Branding sizes (Logo and QR)
-        // FIXED: Constant QR size to prevent "pathetic" enlargement on long addresses
-        int qrSize = 240; 
+        // FIXED: Dynamically scale QR size based on image width (approx 13% of image width) instead of hardcoded 240px
+        int qrSize = (int) (width * 0.13f);
+        if (qrSize < 120) qrSize = 120; // Minimum floor size
+
         int logoSize = (int) (width * 0.08);
         if (logoSize < 50) logoSize = 50;
         
@@ -144,7 +146,7 @@ public class WatermarkUtils {
 
             canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
 
-            // --- 7. Draw QR Code (Fixed size, anchored under Logo) ---
+            // --- 7. Draw QR Code (Responsively scaled and anchored under Logo) ---
             if (showQr && lat != null && lon != null) {
                 Bitmap qrBitmap = generateQrCodeBitmap(lat, lon, qrSize);
                 if (qrBitmap != null) {
