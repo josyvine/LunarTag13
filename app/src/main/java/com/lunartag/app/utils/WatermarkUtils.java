@@ -10,38 +10,28 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.text.TextPaint;
 
+import com.lunartag.app.R;
+
 import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
 import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.common.BitMatrix;
-import com.lunartag.app.R;
+import com.google.zxing.EncodeHintType;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 
-/**
- * Utility class for rendering consistent, resolution-independent watermarks
- * across front camera, back camera, and gallery imported photos.
- */
 public class WatermarkUtils {
+
+    private static final int MIN_RENDER_SIDE = 1440;
 
     private WatermarkUtils() {}
 
-    public static Bitmap addWatermark(
-            Context context,
-            Bitmap originalBitmap,
-            Bitmap mapBitmap,
-            String[] lines,
-            String lat,
-            String lon,
-            boolean showQr
-    ) {
+    public static Bitmap addWatermark(Context context, Bitmap originalBitmap, Bitmap mapBitmap, String[] lines, String lat, String lon, boolean showQr) {
         if (originalBitmap == null || lines == null || lines.length == 0) {
             return originalBitmap;
         }
 
-        // Filter out null/empty lines so centering is always accurate
         List<String> validLines = new ArrayList<>();
         for (String line : lines) {
             if (line != null && !line.trim().isEmpty()) {
@@ -52,81 +42,97 @@ public class WatermarkUtils {
             return originalBitmap;
         }
 
-        // Ensure mutable working copy
         Bitmap workingBitmap = originalBitmap;
-        if (!workingBitmap.isMutable()) {
-            workingBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true);
+
+        // Normalize low-res imported images so text, logo, and QR render crisp like camera photos
+        int origMinSide = Math.min(workingBitmap.getWidth(), workingBitmap.getHeight());
+        float upscaleFactor = 1.0f;
+        if (origMinSide > 0 && origMinSide < MIN_RENDER_SIDE) {
+            upscaleFactor = (float) MIN_RENDER_SIDE / origMinSide;
+            int newW = Math.round(workingBitmap.getWidth() * upscaleFactor);
+            int newH = Math.round(workingBitmap.getHeight() * upscaleFactor);
+            workingBitmap = Bitmap.createScaledBitmap(workingBitmap, newW, newH, true);
         }
+
+        if (!workingBitmap.isMutable()) {
+            workingBitmap = workingBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        }
+        workingBitmap.setDensity(Bitmap.DENSITY_NONE);
 
         Canvas canvas = new Canvas(workingBitmap);
         int width = canvas.getWidth();
         int height = canvas.getHeight();
-
-        // Use the shorter side as reference so portrait AND landscape imports stay proportional
         float refSize = Math.min(width, height);
 
-        // --- 1. Proportional Dimensions & Spacing (No hardcoded pixel offsets) ---
-        float marginX = refSize * 0.025f;
-        float paddingY = refSize * 0.020f;
-        float gapBetweenLogoAndQr = refSize * 0.010f;
-        float gapBetweenBrandAndLogo = refSize * 0.014f;
-
-        float baseTextSize = refSize / 40.0f;
-        float minTextSize = baseTextSize * 0.55f;
-        float lineSpacing = baseTextSize * 0.28f;
-
-        float shadowRadius = Math.max(1.5f, refSize * 0.0025f);
-        float shadowOffset = Math.max(1.0f, refSize * 0.0015f);
-
-        int logoSize = Math.max(36, Math.round(refSize * 0.075f));
-        int qrSize = Math.max(72, Math.round(refSize * 0.120f));
-
-        // --- 2. Configure Paints ---
+        // --- 1. Configure Main Text Paint ---
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.WHITE);
+        float baseTextSize = refSize / 40.0f;
         textPaint.setTextSize(baseTextSize);
-        textPaint.setShadowLayer(shadowRadius, shadowOffset, shadowOffset, Color.BLACK);
+        float shadowR = Math.max(1.5f, refSize * 0.0015f);
+        float shadowD = Math.max(1.0f, refSize * 0.0010f);
+        textPaint.setShadowLayer(shadowR, shadowD, shadowD, Color.BLACK);
 
+        // --- 2. Configure Branding Paint (App Name) ---
         TextPaint brandPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         brandPaint.setColor(Color.YELLOW);
         brandPaint.setTextSize(refSize / 35.0f);
         brandPaint.setFakeBoldText(true);
-        brandPaint.setShadowLayer(shadowRadius, shadowOffset, shadowOffset, Color.BLACK);
+        brandPaint.setShadowLayer(shadowR, shadowD, shadowD, Color.BLACK);
 
         Paint backgroundPaint = new Paint();
         backgroundPaint.setColor(Color.BLACK);
-        backgroundPaint.setAlpha(145);
+        backgroundPaint.setAlpha(140);
 
-        // --- 3. Load Branding & Measure Horizontal Boundaries ---
+        // --- 3. Tight Proportional Spacing (Matches Front/Back ~17% bar height) ---
+        float marginX = refSize * 0.010f;
+        float topPadding = refSize * 0.010f;
+        float bottomPadding = refSize * 0.010f;
+        float lineSpacing = baseTextSize * 0.20f;
+        float gapBetweenLogoAndQr = refSize * 0.007f;
+        float brandGap = refSize * 0.010f;
+
+        int qrSize = Math.max(64, Math.round(refSize * 0.125f));
+        int logoSize = Math.max(36, Math.round(refSize * 0.080f));
+
+        // --- 4. Branding & QR Horizontal Layout ---
         Bitmap logo = null;
         if (context != null) {
             logo = BitmapFactory.decodeResource(context.getResources(), R.drawable.lunartag);
+            if (logo != null) {
+                logo.setDensity(Bitmap.DENSITY_NONE);
+            }
         }
 
-        boolean hasQr = showQr && lat != null && lon != null && !lat.trim().isEmpty() && !lon.trim().isEmpty();
         boolean hasLogo = (logo != null);
+        boolean hasQr = showQr && lat != null && lon != null && !lat.trim().isEmpty() && !lon.trim().isEmpty();
 
         String appName = "Lunar Tag";
         float brandTextWidth = brandPaint.measureText(appName);
 
-        // Anchor the wider right-side element (QR code) to the right margin so nothing overflows
-        float qrLeft = width - qrSize - marginX;
-        float logoLeft = hasQr
-                ? qrLeft + (qrSize - logoSize) / 2f
-                : width - logoSize - marginX;
-        float brandTextX = (hasLogo ? logoLeft : qrLeft) - brandTextWidth - gapBetweenBrandAndLogo;
+        float qrX = width - qrSize - marginX;
+        float logoX = hasQr ? (qrX + (qrSize - logoSize) / 2f) : (width - logoSize - marginX);
+        float brandTextX = (hasLogo ? logoX : qrX) - brandTextWidth - brandGap;
 
-        float rightContentLeftEdge = width - marginX;
+        float rightBoundary = width - marginX;
         if (hasLogo || hasQr) {
-            rightContentLeftEdge = Math.min(brandTextX, hasQr ? qrLeft : logoLeft);
+            rightBoundary = Math.min(brandTextX, hasQr ? qrX : logoX);
         }
 
-        // --- 4. Map Sizing & Left Text Area ---
-        float mapGap = refSize * 0.020f;
-        float textLeft = (mapBitmap != null) ? (marginX + mapBitmap.getWidth() + mapGap) : marginX;
-        float maxAllowedTextWidth = Math.max(refSize * 0.30f, rightContentLeftEdge - textLeft - marginX);
+        // --- 5. Map Dimensions (if provided) ---
+        float mapW = 0f;
+        float mapH = 0f;
+        if (mapBitmap != null) {
+            mapBitmap.setDensity(Bitmap.DENSITY_NONE);
+            mapW = mapBitmap.getWidth() * upscaleFactor;
+            mapH = mapBitmap.getHeight() * upscaleFactor;
+        }
 
-        // --- 5. Measure Actual Text Block Height (accounting for shrunk long lines) ---
+        float textLeft = (mapBitmap != null) ? (marginX + mapW + (refSize * 0.015f)) : marginX;
+        float maxAllowedWidth = Math.max(refSize * 0.30f, rightBoundary - textLeft - marginX);
+        float minTextSize = baseTextSize * 0.50f;
+
+        // --- 6. Measure Actual Text Block ---
         float[] lineSizes = new float[validLines.size()];
         float[] lineHeights = new float[validLines.size()];
         float[] lineAscents = new float[validLines.size()];
@@ -137,7 +143,7 @@ public class WatermarkUtils {
             float currentSize = baseTextSize;
             textPaint.setTextSize(currentSize);
 
-            while (textPaint.measureText(line) > maxAllowedTextWidth && currentSize > minTextSize) {
+            while (textPaint.measureText(line) > maxAllowedWidth && currentSize > minTextSize) {
                 currentSize -= Math.max(0.5f, baseTextSize * 0.03f);
                 textPaint.setTextSize(currentSize);
             }
@@ -152,7 +158,7 @@ public class WatermarkUtils {
             }
         }
 
-        // --- 6. Calculate Overall Watermark Bar Height ---
+        // --- 7. Calculate Block Height ---
         float brandingContentHeight = 0f;
         if (hasLogo && hasQr) {
             brandingContentHeight = logoSize + gapBetweenLogoAndQr + qrSize;
@@ -162,31 +168,31 @@ public class WatermarkUtils {
             brandingContentHeight = qrSize;
         }
 
-        float textStackHeight = totalTextHeight + (paddingY * 2f);
-        float brandingStackHeight = brandingContentHeight + (paddingY * 2f);
-        float mapStackHeight = (mapBitmap != null) ? (mapBitmap.getHeight() + (paddingY * 2f)) : 0f;
+        float brandingStackHeight = topPadding + brandingContentHeight + bottomPadding;
+        float textStackHeight = totalTextHeight + topPadding + bottomPadding;
+        float mapStackHeight = (mapBitmap != null) ? (mapH + topPadding + bottomPadding) : 0f;
 
         float blockHeight = Math.max(brandingStackHeight, Math.max(textStackHeight, mapStackHeight));
         float watermarkTop = height - blockHeight;
 
-        // --- 7. Draw Background Bar ---
+        // --- 8. Draw Background ---
         Rect backgroundRect = new Rect(0, Math.round(watermarkTop), width, height);
         canvas.drawRect(backgroundRect, backgroundPaint);
 
-        // --- 8. Draw Map Preview (if provided) ---
+        // --- 9. Draw Map Bitmap ---
         if (mapBitmap != null) {
-            float mapTop = watermarkTop + (blockHeight - mapBitmap.getHeight()) / 2f;
-            RectF mapDest = new RectF(marginX, mapTop, marginX + mapBitmap.getWidth(), mapTop + mapBitmap.getHeight());
+            float mapTop = watermarkTop + (blockHeight - mapH) / 2f;
+            RectF mapDest = new RectF(marginX, mapTop, marginX + mapW, mapTop + mapH);
             canvas.drawBitmap(mapBitmap, null, mapDest, null);
         }
 
-        // --- 9. Draw Branding & QR (Vertically centered inside blockHeight) ---
+        // --- 10. Draw Branding & QR ---
         float brandingStartY = watermarkTop + (blockHeight - brandingContentHeight) / 2f;
 
         if (hasLogo) {
-            RectF logoDest = new RectF(logoLeft, brandingStartY, logoLeft + logoSize, brandingStartY + logoSize);
-            Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            canvas.drawBitmap(logo, null, logoDest, bitmapPaint);
+            RectF logoDest = new RectF(logoX, brandingStartY, logoX + logoSize, brandingStartY + logoSize);
+            Paint logoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            canvas.drawBitmap(logo, null, logoDest, logoPaint);
 
             float brandTextY = brandingStartY + (logoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
             canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
@@ -195,18 +201,16 @@ public class WatermarkUtils {
         if (hasQr) {
             Bitmap qrBitmap = generateQrCodeBitmap(lat, lon, qrSize);
             if (qrBitmap != null) {
-                float qrTop = hasLogo
-                        ? (brandingStartY + logoSize + gapBetweenLogoAndQr)
-                        : brandingStartY;
-                RectF qrDest = new RectF(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize);
-                // Disable filtering on QR code so modules stay razor-sharp
+                qrBitmap.setDensity(Bitmap.DENSITY_NONE);
+                float qrY = hasLogo ? (brandingStartY + logoSize + gapBetweenLogoAndQr) : brandingStartY;
+                RectF qrDest = new RectF(qrX, qrY, qrX + qrSize, qrY + qrSize);
                 Paint qrPaint = new Paint();
                 qrPaint.setFilterBitmap(false);
                 canvas.drawBitmap(qrBitmap, null, qrDest, qrPaint);
             }
         }
 
-        // --- 10. Draw Main Text Lines (Vertically centered inside blockHeight) ---
+        // --- 11. Draw Main Text Lines ---
         float currentTopY = watermarkTop + (blockHeight - totalTextHeight) / 2f;
 
         for (int i = 0; i < validLines.size(); i++) {
@@ -240,6 +244,7 @@ public class WatermarkUtils {
             }
 
             Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            bitmap.setDensity(Bitmap.DENSITY_NONE);
             bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
             return bitmap;
         } catch (Exception e) {
