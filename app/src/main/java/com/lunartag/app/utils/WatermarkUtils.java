@@ -26,7 +26,7 @@ import java.util.Hashtable;
  * FIXED: Resolved truncation by calculating block height from branding stack height.
  * FIXED: Decoupled QR scaling and implemented dynamic font reduction for long addresses.
  * FIXED: Upgraded signature to return Bitmap, ensuring automatic mutability handling.
- * FIXED: Responsive QR size calculation with orientation normalization so imported or narrow gallery images don't display oversized watermarks.
+ * FIXED: Responsive QR size calculation based on image width to prevent giant or tiny QR codes across different camera/gallery resolutions.
  */
 public class WatermarkUtils {
 
@@ -41,7 +41,7 @@ public class WatermarkUtils {
      * @param lines An array of strings, with each string representing one line of the watermark text.
      * @param lat Raw latitude string for QR link.
      * @param lon Raw longitude string for QR link.
-     * @printQr Boolean toggle to enable/disable QR printing.
+     * @param showQr Boolean toggle to enable/disable QR printing.
      * @return The watermarked mutable Bitmap.
      */
     public static Bitmap addWatermark(Context context, Bitmap originalBitmap, Bitmap mapBitmap, String[] lines, String lat, String lon, boolean showQr) {
@@ -59,26 +59,17 @@ public class WatermarkUtils {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
-        // --- 0. ORIENTATION NORMALIZATION FACTOR ---
-        // Imported gallery images or portrait shots have narrower widths which previously caused
-        // elements to scale up too large relative to landscape camera snapshots. 
-        // We normalize using a reference baseline dimension.
-        float referenceScaleBase = Math.max(width, height);
-        float resolutionFactor = referenceScaleBase / 3000.0f; // Normalized against typical 3MP-4MP camera width
-        if (resolutionFactor < 0.6f) resolutionFactor = 0.6f;
-        if (resolutionFactor > 1.5f) resolutionFactor = 1.5f;
-
         // --- 1. Configure Main Text Paint ---
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.WHITE);
-        float baseTextSize = (width / 42.0f) * Math.min(resolutionFactor, 1.1f);
+        float baseTextSize = width / 40.0f;
         textPaint.setTextSize(baseTextSize); 
         textPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
 
         // --- 2. Configure Branding Paint (App Name) ---
         TextPaint brandPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         brandPaint.setColor(Color.YELLOW); 
-        brandPaint.setTextSize((width / 36.0f) * Math.min(resolutionFactor, 1.1f)); 
+        brandPaint.setTextSize(width / 35.0f); 
         brandPaint.setFakeBoldText(true);
         brandPaint.setShadowLayer(3f, 2f, 2f, Color.BLACK);
 
@@ -88,27 +79,25 @@ public class WatermarkUtils {
 
         // --- 3. Calculate Dimensions ---
         float textHeight = textPaint.descent() - textPaint.ascent();
-        float lineSpacing = 8f;
+        float lineSpacing = 10f;
         
         // Precise calculation of text block height
         float totalTextHeight = (textHeight * lines.length) + (lineSpacing * (lines.length - 1));
         
-        // FIXED: Scaled QR size and logo size with orientation/resolution normalization 
-        // so imported portrait gallery images match camera photos perfectly.
-        int qrSize = (int) (width * 0.11f * Math.min(resolutionFactor, 1.2f));
-        if (qrSize < 110) qrSize = 110; // Minimum floor size
-        if (qrSize > 200) qrSize = 200; // Maximum ceiling size for imported/narrow images
+        // FIXED: Dynamically scale QR size based on image width (approx 13% of image width) instead of hardcoded 240px
+        int qrSize = (int) (width * 0.13f);
+        if (qrSize < 120) qrSize = 120; // Minimum floor size
 
-        int logoSize = (int) (width * 0.07f * Math.min(resolutionFactor, 1.2f));
-        if (logoSize < 45) logoSize = 45;
-        if (logoSize > 110) logoSize = 110;
+        int logoSize = (int) (width * 0.08);
+        if (logoSize < 50) logoSize = 50;
         
         // Vertical Spacing
-        float topPadding = 30f;
-        float bottomPadding = 30f;
-        float gapBetweenLogoAndQr = 12f;
+        float topPadding = 40f;
+        float bottomPadding = 40f;
+        float gapBetweenLogoAndQr = 15f;
 
         // Calculate heights for both sides
+        // FIXED: The branding stack height is now the master anchor for the block height
         float brandingStackHeight = topPadding + logoSize + gapBetweenLogoAndQr + (showQr ? qrSize : 0) + bottomPadding;
         float textStackHeight = totalTextHeight + (topPadding * 2);
         
@@ -116,8 +105,8 @@ public class WatermarkUtils {
         float blockHeight = Math.max(brandingStackHeight, textStackHeight);
 
         // Map minimum height check
-        if (mapBitmap != null && mapBitmap.getHeight() + 60 > blockHeight) {
-            blockHeight = mapBitmap.getHeight() + 60;
+        if (mapBitmap != null && mapBitmap.getHeight() + 80 > blockHeight) {
+            blockHeight = mapBitmap.getHeight() + 80;
         }
 
         float watermarkTop = height - blockHeight;
@@ -145,19 +134,19 @@ public class WatermarkUtils {
         if (logo != null) {
             Bitmap scaledLogo = Bitmap.createScaledBitmap(logo, logoSize, logoSize, true);
 
-            logoX = width - logoSize - 35; 
+            logoX = width - logoSize - 40; 
             logoY = watermarkTop + topPadding; 
 
             canvas.drawBitmap(scaledLogo, logoX, logoY, null);
 
             String appName = "Lunar Tag";
             float brandTextWidth = brandPaint.measureText(appName);
-            float brandTextX = logoX - brandTextWidth - 15;
+            float brandTextX = logoX - brandTextWidth - 20;
             float brandTextY = logoY + (logoSize / 2f) - ((brandPaint.descent() + brandPaint.ascent()) / 2f);
 
             canvas.drawText(appName, brandTextX, brandTextY, brandPaint);
 
-            // --- 7. Draw QR Code (Normalized scaling anchored under Logo) ---
+            // --- 7. Draw QR Code (Responsively scaled and anchored under Logo) ---
             if (showQr && lat != null && lon != null) {
                 Bitmap qrBitmap = generateQrCodeBitmap(lat, lon, qrSize);
                 if (qrBitmap != null) {
@@ -169,7 +158,7 @@ public class WatermarkUtils {
         }
 
         // --- 8. Draw Main Text Lines with Dynamic Scaling ---
-        float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 45 : 35;
+        float textLeft = (mapBitmap != null) ? mapBitmap.getWidth() + 50 : 40;
         
         // Text area takes up 65% of width to leave room for the fixed QR area
         float maxAllowedWidth = (width - (width * 0.35f)) - textLeft;
@@ -184,7 +173,7 @@ public class WatermarkUtils {
                 float lineWidth = textPaint.measureText(line);
                 
                 // Programmatically scale down if the address is a long string
-                while (lineWidth > maxAllowedWidth && currentTextSize > 9) {
+                while (lineWidth > maxAllowedWidth && currentTextSize > 10) {
                     currentTextSize -= 1.0f;
                     textPaint.setTextSize(currentTextSize);
                     lineWidth = textPaint.measureText(line);
