@@ -25,10 +25,6 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
-    <!-- Accessibility -->
-    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
-        tools:ignore="ProtectedPermissions" />
-
     <!-- Hardware -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.location.gps" android:required="true" />
@@ -47,12 +43,12 @@
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
-        <!-- *** NEW: ADMOB APP ID CONFIGURATION *** -->
+        <!-- *** ADMOB APP ID CONFIGURATION *** -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-2223803405403727~9794002642" />
 
-        <!-- NEW: Splash Screen (Now the Launcher) -->
+        <!-- Splash Screen (Launcher) -->
         <activity
             android:name=".SplashActivity"
             android:exported="true"
@@ -63,7 +59,6 @@
             </intent-filter>
         </activity>
 
-        <!-- OLD Launcher (Intent Filter Removed) -->
         <activity
             android:name=".OnboardingActivity"
             android:exported="false"
@@ -80,25 +75,12 @@
             android:screenOrientation="portrait"
             android:exported="false" />
 
-        <!-- ALARM RECEIVER: Permissions restored so this works now -->
+        <!-- ALARM RECEIVER -->
         <receiver 
             android:name=".receivers.AlarmReceiver" 
             android:exported="false" />
 
-        <!-- ACCESSIBILITY SERVICE: The Robot -->
-        <service
-            android:name=".services.LunarTagAccessibilityService"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
-        </service>
-
-        <!-- *** NEW: FIREBASE MESSAGING SERVICE *** -->
+        <!-- FIREBASE MESSAGING SERVICE -->
         <service
             android:name=".services.MyFirebaseMessagingService"
             android:exported="false">
@@ -107,12 +89,12 @@
             </intent-filter>
         </service>
 
-        <!-- NEW: OVERLAY SERVICE (The Red Light) -->
+        <!-- OVERLAY SERVICE -->
         <service 
             android:name=".services.OverlayService"
             android:exported="false" />
 
-        <!-- AUTO-SEND SERVICE (Missing from manifest, required for Android 14+ targetSdk 36) -->
+        <!-- AUTO-SEND SERVICE -->
         <service
             android:name=".services.SendService"
             android:foregroundServiceType="dataSync"
