@@ -11,8 +11,8 @@ android {
         applicationId "com.lunartag.app"
         minSdkVersion 26
         targetSdkVersion 36
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -79,16 +79,16 @@ dependencies {
     // Firebase Remote Config - REPLACES FCM FOR FEATURE TOGGLES
     implementation 'com.google.firebase:firebase-config'
 
-    // *** NEW: Firebase Cloud Messaging for Push Notifications ***
+    // Firebase Cloud Messaging for Push Notifications
     implementation 'com.google.firebase:firebase-messaging'
 
     // Google Play Services for Location
     implementation 'com.google.android.gms:play-services-location:21.2.0'
 
-    // *** FIX: Google Mobile Ads SDK (AdMob) ***
+    // Google Mobile Ads SDK (AdMob)
     implementation 'com.google.android.gms:play-services-ads:25.5.0'
 
-    // *** NEW: Google Play In-App Updates ***
+    // Google Play In-App Updates
     implementation 'com.google.android.play:app-update:2.1.0'
 
     // CameraX libraries
@@ -98,7 +98,7 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:${camerax_version}"
     implementation "androidx.camera:camera-view:${camerax_version}"
 
-    // *** FIX: Guava (Required for ListenableFuture build error) ***
+    // Guava (Required for ListenableFuture build error)
     implementation 'com.google.guava:guava:31.1-android'
 
     // Map library (OSMDroid)
@@ -118,7 +118,7 @@ dependencies {
     // Scheduling library (WorkManager)
     implementation 'androidx.work:work-runtime:2.9.0'
 
-    // *** NEW: QR Code Generation Library ***
+    // QR Code Generation Library
     implementation 'com.google.zxing:core:3.5.3'
 
     // Testing Libraries
