@@ -7,7 +7,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -36,18 +35,6 @@ public class SendService extends Service {
     public static final String ACTION_SHARE_IMAGE = "com.lunartag.app.ACTION_SHARE_IMAGE";
     public static final String EXTRA_SHARE_IMAGE_URI = "share_image_uri";
 
-    // Settings Prefs
-    private static final String PREFS_SETTINGS = "LunarTagSettings";
-    private static final String KEY_WHATSAPP_GROUP = "whatsapp_group";
-
-    // Bridge Prefs (For Accessibility)
-    private static final String PREFS_ACCESSIBILITY = "LunarTagAccessPrefs";
-    private static final String KEY_TARGET_GROUP = "target_group_name";
-    
-    // TOKEN SYSTEM KEYS
-    private static final String KEY_JOB_PENDING = "job_is_pending"; // The Permission Ticket
-    private static final String KEY_FORCE_RESET = "force_reset_logic"; // The Brain Wipe
-
     private final Handler safetyHandler = new Handler(Looper.getMainLooper());
     private Runnable safetyTimeoutRunnable;
 
@@ -59,8 +46,7 @@ public class SendService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Live Log: Service Start
-        showLiveLog("Auto-Send Service Started...");
+        showLiveLog("Photo Send Service Started...");
 
         String filePath = intent.getStringExtra(EXTRA_FILE_PATH);
 
@@ -75,10 +61,10 @@ public class SendService extends Service {
 
         try {
             if (filePath.startsWith("content://")) {
-                // It's a Custom Folder URI (SAF)
+                // Custom Folder URI (SAF)
                 imageUri = Uri.parse(filePath);
             } else {
-                // It's a standard internal file
+                // Standard internal file
                 File imageFile = new File(filePath);
                 if (!imageFile.exists()) {
                     Log.e(TAG, "Image file missing: " + filePath);
@@ -98,24 +84,15 @@ public class SendService extends Service {
             return START_NOT_STICKY;
         }
 
-        // --- STEP 1: Arm Accessibility (The Bridge) ---
-        // This gives the Robot the Token and the Reset Command
-        armAccessibilityService();
-
-        // --- STEP 2: Post Notification ---
+        // Post Foreground Notification for user to tap and send
         postNotification(imageUri);
 
-        // --- STEP 3: Setup Safety Timeout ---
-        // If the notification is completely unattended (or sent by robot),
-        // self-destruct after 60 seconds to prevent lingering in the drawer.
+        // Safety Timeout: Self-terminate after 60 seconds if unattended
         setupSafetyTimeout();
 
         return START_NOT_STICKY;
     }
 
-    /**
-     * Helper to show Live Logs (Toasts) on the screen from background.
-     */
     private void showLiveLog(String message) {
         new Handler(Looper.getMainLooper()).post(() -> 
             Toast.makeText(getApplicationContext(), "SendService: " + message, Toast.LENGTH_SHORT).show()
@@ -124,8 +101,6 @@ public class SendService extends Service {
 
     private void postNotification(Uri imageUri) {
         try {
-            // FIXED: Point PendingIntent to MainActivity instead of raw WhatsApp share action.
-            // This grants background activity launch clearance and stops SendService first.
             Intent clickIntent = new Intent(this, MainActivity.class);
             clickIntent.setAction(ACTION_SHARE_IMAGE);
             clickIntent.putExtra(EXTRA_SHARE_IMAGE_URI, imageUri.toString());
@@ -139,8 +114,8 @@ public class SendService extends Service {
             );
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("Photo Ready for WhatsApp")
-                    .setContentText("Tap to Auto-Send to Group")
+                    .setContentTitle("Photo Ready to Send")
+                    .setContentText("Tap to Send to Target")
                     .setSmallIcon(R.drawable.ic_camera) 
                     .setContentIntent(pendingIntent) 
                     .setPriority(NotificationCompat.PRIORITY_HIGH) 
@@ -148,35 +123,17 @@ public class SendService extends Service {
                     .setAutoCancel(true) 
                     .build();
 
-            // Android 14+ (API 34+) & Android 16 targetSdk compliance: provide FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            // Android 14+ (API 34+) & Android 16 targetSdk compliance
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
             } else {
                 startForeground(NOTIFICATION_ID, notification);
             }
             
-            // Live Log: Success
             showLiveLog("Notification Posted! Tap it to send.");
             
         } catch (Exception e) {
             showLiveLog("Error building notification: " + e.getMessage());
-        }
-    }
-
-    private void armAccessibilityService() {
-        SharedPreferences settings = getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE);
-        String groupName = settings.getString(KEY_WHATSAPP_GROUP, "");
-
-        if (groupName != null && !groupName.isEmpty()) {
-            SharedPreferences accessPrefs = getSharedPreferences(PREFS_ACCESSIBILITY, Context.MODE_PRIVATE);
-            accessPrefs.edit()
-                    .putString(KEY_TARGET_GROUP, groupName)
-                    .putBoolean(KEY_JOB_PENDING, true)  // GIVE PERMISSION TICKET
-                    .putBoolean(KEY_FORCE_RESET, true)  // COMMAND BRAIN WIPE
-                    .apply();
-            Log.d(TAG, "Bridge Armed for: " + groupName);
-        } else {
-            showLiveLog("Warning: No WhatsApp Group Name in Settings!");
         }
     }
 
@@ -193,7 +150,7 @@ public class SendService extends Service {
                 // Already terminated
             }
         };
-        safetyHandler.postDelayed(safetyTimeoutRunnable, 60000); // 60-second dismount
+        safetyHandler.postDelayed(safetyTimeoutRunnable, 60000);
     }
 
     private void createNotificationChannel() {
@@ -203,7 +160,7 @@ public class SendService extends Service {
                     "Scheduled Send Notifications",
                     NotificationManager.IMPORTANCE_HIGH
             );
-            serviceChannel.setDescription("Alerts for WhatsApp Auto-Send");
+            serviceChannel.setDescription("Alerts for Photo Auto-Send");
             serviceChannel.enableVibration(true);
             
             NotificationManager manager = getSystemService(NotificationManager.class);
