@@ -2,7 +2,6 @@ package com.lunartag.app.ui.settings;
 
 import android.app.TimePickerDialog;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -18,7 +17,6 @@ import androidx.navigation.fragment.NavHostFragment;
 
 import com.lunartag.app.R;
 import com.lunartag.app.databinding.FragmentSettingsBinding;
-import com.lunartag.app.services.OverlayService;
 import com.lunartag.app.utils.AdManager;
 
 import java.util.Calendar;
@@ -33,7 +31,7 @@ public class SettingsFragment extends Fragment {
     private static final String KEY_SHIFT_END = "shift_end";
     private static final String KEY_WHATSAPP_GROUP = "whatsapp_group";
     
-    // NEW: WhatsApp Method (Option A vs Option B)
+    // WhatsApp Method (Option A vs Option B)
     private static final String KEY_WA_METHOD = "wa_automation_method"; // "red_box" or "coordinate"
 
     // Robot Settings Storage (AccessPrefs)
@@ -44,7 +42,7 @@ public class SettingsFragment extends Fragment {
     private SharedPreferences settingsPrefs;
     private SharedPreferences accessPrefs;
     
-    // *** NEW: Ad Manager ***
+    // Ad Manager
     private AdManager adManager;
 
     @Override
@@ -65,7 +63,7 @@ public class SettingsFragment extends Fragment {
         loadSettings();
         setupClickListeners();
 
-        // This method will now show a toast with the admin flag's value
+        // Check and setup admin scheduler features with ads
         setupAdminFeatures();
     }
 
@@ -93,56 +91,6 @@ public class SettingsFragment extends Fragment {
                 showTimePickerDialog(false);
             }
         });
-
-        // --- EXISTING: CALIBRATE SHARE ICON (Sequence 0) ---
-        binding.buttonCalibrateShareIcon.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startTraining("MODE_SHARE");
-                Toast.makeText(getContext(), "Open Share Sheet & Drag Target to Icon!", Toast.LENGTH_LONG).show();
-            }
-        });
-
-        // --- NEW: TRAIN GROUP (Sequence 1) ---
-        binding.buttonTrainGroup.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startTraining("MODE_GROUP");
-                Toast.makeText(getContext(), "Open WhatsApp List & Drag to Group!", Toast.LENGTH_LONG).show();
-            }
-        });
-
-        // --- NEW: TRAIN CHAT ICON (Sequence 2) ---
-        binding.buttonTrainChatSend.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startTraining("MODE_CHAT");
-                Toast.makeText(getContext(), "Open Chat & Drag to Send/Attach Icon!", Toast.LENGTH_LONG).show();
-            }
-        });
-
-        // --- NEW: TRAIN PREVIEW SEND (Sequence 3) ---
-        binding.buttonTrainPreviewSend.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startTraining("MODE_PREVIEW");
-                Toast.makeText(getContext(), "Open Image Preview & Drag to Send Button!", Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
-    private void startTraining(String mode) {
-        // 1. Minimize the App (Go to Home)
-        Intent startMain = new Intent(Intent.ACTION_MAIN);
-        startMain.addCategory(Intent.CATEGORY_HOME);
-        startMain.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(startMain);
-
-        // 2. Start Overlay Service with specific MODE
-        Intent intent = new Intent(requireContext(), OverlayService.class);
-        intent.setAction("ACTION_START_TRAINING");
-        intent.putExtra("TRAIN_MODE", mode); // Pass the ID so OverlayService knows what to save
-        requireContext().startService(intent);
     }
 
     private void loadSettings() {
@@ -166,7 +114,7 @@ public class SettingsFragment extends Fragment {
             binding.radioMethodRedBox.setChecked(true);
         }
 
-        // 2. Load Robot Target App Name
+        // 2. Load Target App Name
         String targetApp = accessPrefs.getString(KEY_TARGET_APP_LABEL, "");
         binding.editTextTargetApp.setText(targetApp);
     }
@@ -188,7 +136,7 @@ public class SettingsFragment extends Fragment {
         
         editor.apply();
 
-        // 2. Save Robot Target App Name
+        // 2. Save Target App Name
         SharedPreferences.Editor accessEditor = accessPrefs.edit();
         accessEditor.putString(KEY_TARGET_APP_LABEL, binding.editTextTargetApp.getText().toString().trim());
         accessEditor.apply();
@@ -224,7 +172,7 @@ public class SettingsFragment extends Fragment {
                             binding.editTextShiftEnd.setText(timeString);
                         }
                     }
-                }, hour, minute, false); // false for 12-hour format
+                }, hour, minute, false);
 
         timePickerDialog.show();
     }
@@ -238,11 +186,9 @@ public class SettingsFragment extends Fragment {
         if (isAdminModeEnabled) {
             binding.buttonAdminScheduleEditor.setVisibility(View.VISIBLE);
             
-            // *** MODIFIED CLICK LISTENER FOR ADS ***
             binding.buttonAdminScheduleEditor.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    
                     // 1. Check if Shift has ended (and reset if needed)
                     adManager.checkShiftReset();
                     
@@ -260,7 +206,6 @@ public class SettingsFragment extends Fragment {
                         adManager.showRewardedAd(requireActivity(), new AdManager.OnAdRewardListener() {
                             @Override
                             public void onRewardEarned() {
-                                // Ad Success: Logic inside AdManager sets Level=1, Slots=3
                                 Toast.makeText(getContext(), "Unlocked! 3 Timestamps added.", Toast.LENGTH_LONG).show();
                                 NavHostFragment.findNavController(SettingsFragment.this)
                                         .navigate(R.id.action_settings_to_schedule_editor);
