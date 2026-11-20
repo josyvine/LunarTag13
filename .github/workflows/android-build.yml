@@ -23,7 +23,7 @@ jobs:
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/lunartag.jks
 
       - name: Build Release APK & Play Store AAB
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/gradle-build-action@v3
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/lunartag.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
