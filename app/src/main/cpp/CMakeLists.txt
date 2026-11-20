@@ -23,3 +23,6 @@ target_link_options(
     "-Wl,-z,max-page-size=16384"
     $<$<CONFIG:Release>:-s>
 )
+
+# Force maximum page size alignment compatibility for all targets
+set_property(TARGET lunartag_native PROPERTY LINK_FLAGS "-Wl,-z,max-page-size=16384")
